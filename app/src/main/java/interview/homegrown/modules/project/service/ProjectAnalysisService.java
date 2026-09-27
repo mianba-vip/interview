@@ -4,6 +4,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.common.ai.StructuredOutputInvoker;
+import interview.homegrown.common.ai.AiConfig;
+import interview.homegrown.common.ai.AiSettingsService;
+import interview.homegrown.common.async.DurableJobQueue;
+import interview.homegrown.common.async.DurableJobType;
+import interview.homegrown.common.config.StorageProperties;
 import interview.homegrown.modules.drill.domain.Concept;
 import interview.homegrown.modules.drill.domain.StudyPlan;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
@@ -22,6 +27,8 @@ import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -83,6 +90,11 @@ public class ProjectAnalysisService {
     private final StudyPlanService studyPlanService;
     private final StructuredOutputInvoker invoker;
     private final ObjectMapper objectMapper;
+    private final DurableJobQueue jobs;
+    private final AiSettingsService settings;
+    private final JdbcTemplate jdbc;
+    private final TransactionTemplate transactions;
+    private final StorageProperties storage;
 
     /** 域分析专用线程池（有界，避免 LLM 并发超限 / OOM）。 */
     private final Executor domainExecutor = Executors.newFixedThreadPool(PARALLEL_DOMAINS, r -> {
@@ -98,7 +110,9 @@ public class ProjectAnalysisService {
                                   ConceptRepository conceptRepo,
                                   StudyPlanService studyPlanService,
                                   StructuredOutputInvoker invoker,
-                                  ObjectMapper objectMapper) {
+                                  ObjectMapper objectMapper, DurableJobQueue jobs,
+                                  AiSettingsService settings, JdbcTemplate jdbc,
+                                  TransactionTemplate transactions, StorageProperties storage) {
         this.importRepo = importRepo;
         this.domainRepo = domainRepo;
         this.subPointRepo = subPointRepo;
@@ -107,6 +121,11 @@ public class ProjectAnalysisService {
         this.studyPlanService = studyPlanService;
         this.invoker = invoker;
         this.objectMapper = objectMapper;
+        this.jobs = jobs;
+        this.settings = settings;
+        this.jdbc = jdbc;
+        this.transactions = transactions;
+        this.storage = storage;
     }
 
     // ============================================================
@@ -128,7 +147,9 @@ public class ProjectAnalysisService {
 
         Path tempDir;
         try {
-            tempDir = Files.createTempDirectory("project_import_");
+            Path durableRoot = Path.of(storage.getLocalDir(), "projects").toAbsolutePath();
+            Files.createDirectories(durableRoot);
+            tempDir = Files.createTempDirectory(durableRoot, "project_import_");
             unzip(file.getInputStream(), tempDir);
         } catch (IOException e) {
             throw new ResponseStatusException(BAD_REQUEST, "解压失败：" + e.getMessage());
@@ -139,12 +160,7 @@ public class ProjectAnalysisService {
         pi.setName(name);
         pi.setRootPath(tempDir.toAbsolutePath().toString());
         pi.setStatus("PENDING");
-        pi = importRepo.save(pi);
-
-        final Long projectId = pi.getId();
-        final Path root = tempDir;
-        CompletableFuture.runAsync(() -> analyze(projectId, root, userId));
-        return pi;
+        return saveAndQueue(pi, userId);
     }
 
     /**
@@ -172,17 +188,22 @@ public class ProjectAnalysisService {
         pi.setName(name);
         pi.setRootPath(root.toAbsolutePath().toString());
         pi.setStatus("PENDING");
-        pi = importRepo.save(pi);
+        return saveAndQueue(pi, userId);
+    }
 
-        final Long projectId = pi.getId();
-        CompletableFuture.runAsync(() -> analyze(projectId, root, userId));
-        return pi;
+    private ProjectImport saveAndQueue(ProjectImport project, Long userId) {
+        return transactions.execute(status -> {
+            ProjectImport saved = importRepo.save(project);
+            jobs.enqueue(DurableJobType.PROJECT_ANALYSIS, saved.getId(), userId, false, false);
+            return saved;
+        });
     }
 
     /**
      * 获取项目当前状态（含分析结果）。
      */
     public ProjectStatus getStatus(Long userId, Long projectId) {
+        jobs.rememberRequestConfig(userId);
         ProjectImport pi = importRepo.findByUserIdAndId(userId, projectId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "项目不存在"));
         return toStatus(pi);
@@ -190,6 +211,7 @@ public class ProjectAnalysisService {
 
     /** 列出用户所有导入项目（含各自状态与分析结果）。 */
     public List<ProjectStatus> listForUser(Long userId) {
+        jobs.rememberRequestConfig(userId);
         return importRepo.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(this::toStatus)
                 .toList();
@@ -272,14 +294,20 @@ public class ProjectAnalysisService {
     //  异步分析
     // ============================================================
 
-    private void analyze(Long projectId, Path root, Long userId) {
+    public void runJob(Long projectId, Long userId) {
         ProjectImport pi = importRepo.findById(projectId).orElse(null);
-        if (pi == null) return;
+        if (pi == null || !userId.equals(pi.getUserId()) || "READY".equals(pi.getStatus())) return;
+        Path root = Path.of(pi.getRootPath());
+        if (!Files.isDirectory(root)) throw new IllegalStateException("项目源文件已不存在，请重新导入");
+        // 上次进程可能在逐域写入过程中退出；重试时先清掉不完整结果。
+        transactions.executeWithoutResult(status -> {
+            jdbc.update("DELETE FROM project_domain WHERE project_id = ?", projectId);
+            pi.setStatus("ANALYZING");
+            pi.setErrorMsg(null);
+            importRepo.save(pi);
+        });
 
         try {
-            pi.setStatus("ANALYZING");
-            importRepo.save(pi);
-
             // 1. 骨架扫描
             Skeleton skeleton = scanSkeleton(root);
             pi.setTechStack(toJson(skeleton.techStack));
@@ -291,20 +319,20 @@ public class ProjectAnalysisService {
             List<DomainAssignment> assignments = identifyDomains(skeleton, pi.getName());
             log.info("LLM 识别出 {} 个业务域 (project={})", assignments.size(), pi.getName());
 
-            // 3. 并行派发「域 agent」分析代码（每域一个任务，单域失败不拖垮整项目）
+            // 3. 域分析并发执行；任一域失败则整项重试，避免把不完整结果标为 READY。
             List<CompletableFuture<Void>> futures = new ArrayList<>();
+            AiConfig config = settings.currentProviderForRequest();
             for (int i = 0; i < assignments.size(); i++) {
                 DomainAssignment da = assignments.get(i);
                 final int sortOrder = i;
-                futures.add(CompletableFuture.runAsync(() -> {
-                    try {
-                        analyzeDomain(projectId, root, da, sortOrder, userId);
-                    } catch (Exception e) {
-                        log.error("域「{}」分析失败（跳过该域，不影响其他域）: {}", da.name, e.getMessage());
-                    }
-                }, domainExecutor));
+                futures.add(CompletableFuture.runAsync(() -> settings.withTaskConfig(config,
+                        () -> analyzeDomain(projectId, root, da, sortOrder, userId)), domainExecutor));
             }
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+            if (domainRepo.findByProjectIdOrderBySortOrderAsc(projectId).isEmpty()) {
+                throw new IllegalStateException("未生成业务域");
+            }
 
             // 4. 标记完成
             pi.setStatus("READY");
@@ -312,11 +340,16 @@ public class ProjectAnalysisService {
             log.info("项目分析完成 (project={}): {} 个域", pi.getName(), assignments.size());
 
         } catch (Exception e) {
-            log.error("项目分析失败 (projectId={})", projectId, e);
-            pi.setStatus("FAILED");
-            pi.setErrorMsg(e.getMessage() != null ? e.getMessage() : "分析异常");
-            importRepo.save(pi);
+            throw new IllegalStateException("项目分析失败", e);
         }
+    }
+
+    public void markJobFailure(Long projectId, Long userId, boolean dead, String reason) {
+        importRepo.findByUserIdAndId(userId, projectId).ifPresent(pi -> {
+            pi.setStatus(dead ? "FAILED" : "PENDING");
+            pi.setErrorMsg(reason);
+            importRepo.save(pi);
+        });
     }
 
     // ============================================================

@@ -19,7 +19,8 @@
 #       scp/tar 上传产物 → 服务器跑 deploy-prod.sh（先备份 PG，
 #       再 docker 缓存构建 + 重启 + 健康检查）→ 本地复核后端健康。
 # ============================================================================
-set -euo pipefail
+set -Eeuo pipefail
+trap 'rc=$?; echo "❌ 部署中断：deploy-local.sh 第 ${LINENO} 行，退出码 ${rc}" >&2' ERR
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -59,9 +60,39 @@ resolve_pair() {
 }
 resolve_pair
 
-SSH=("$SSH_BIN" -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p "$SSH_PORT")
-SCP=("$SCP_BIN" -i "$SSH_KEY" -o StrictHostKeyChecking=no -P "$SSH_PORT")
+SSH=("$SSH_BIN" -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=no
+  -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -p "$SSH_PORT")
+SCP=("$SCP_BIN" -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=no
+  -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -P "$SSH_PORT")
 REMOTE="$SSH_USER@$SSH_HOST"
+
+# SSHD 在受到公网扫描时可能触发 MaxStartups，短时随机拒绝新连接。
+# 只重试第 0/3 步可安全重复的操作；真正的生产部署不盲目重复执行。
+retry() {
+  local label="$1"; shift
+  local attempt code
+  for ((attempt=1; attempt<=8; attempt++)); do
+    if "$@"; then return 0; else code=$?; fi
+    if ((attempt == 8)); then
+      echo "❌ $label 失败（8 次尝试，最后退出码 $code）" >&2
+      return "$code"
+    fi
+    echo "   ⚠ $label 暂时失败（退出码 $code），${attempt}/8，稍后重试" >&2
+    sleep "$((attempt * 5))"
+  done
+}
+
+remote_sha() {
+  local path="$1"
+  "${SSH[@]}" "$REMOTE" \
+    "if [ -f '$path' ]; then sha256sum '$path' | cut -d ' ' -f1; else echo MISSING; fi"
+}
+
+stream_tree() {
+  local local_dir="$1" remote_stage="$2"
+  tar -C "$local_dir" -czf - . | \
+    "${SSH[@]}" "$REMOTE" "tar -xzf - -C '$remote_stage'"
+}
 
 upload_tree() {
   local local_dir="$1"
@@ -71,27 +102,30 @@ upload_tree() {
   local remote_stage="$remote_parent/.${remote_name}.uploading"
   local remote_previous="$remote_parent/.${remote_name}.previous"
 
-  "${SSH[@]}" "$REMOTE" \
+  retry "创建 Web 暂存目录" "${SSH[@]}" "$REMOTE" \
     "set -e; rm -rf -- '$remote_stage'; mkdir -p '$remote_stage'"
-  tar -C "$local_dir" -czf - . | \
-    "${SSH[@]}" "$REMOTE" "tar -xzf - -C '$remote_stage'"
-  "${SSH[@]}" "$REMOTE" \
-    "set -e; rm -rf -- '$remote_previous'; \
-     if [ -e '$remote_target' ]; then mv '$remote_target' '$remote_previous'; fi; \
-     mv '$remote_stage' '$remote_target'"
+  retry "上传 Web 目录" stream_tree "$local_dir" "$remote_stage"
+  # 如果服务器已完成切换但 SSH 回执丢失，重试只校验正式目录，不会再移走它。
+  retry "切换 Web 目录" "${SSH[@]}" "$REMOTE" \
+    "set -e; if [ -d '$remote_stage' ]; then \
+       test -f '$remote_stage/index.html'; \
+       rm -rf -- '$remote_previous'; \
+       if [ -e '$remote_target' ]; then mv '$remote_target' '$remote_previous'; fi; \
+       mv '$remote_stage' '$remote_target'; \
+     fi; test -f '$remote_target/index.html'"
 }
 
 # ---------- 0/5 预检 ----------
 [ -f "$SSH_KEY" ] || { echo "❌ SSH 私钥不存在：$SSH_KEY"; exit 1; }
-[[ "$DEPLOY_DIR" =~ ^/[A-Za-z0-9._/-]+$ && "$DEPLOY_DIR" != "/" ]] || {
+[[ "$DEPLOY_DIR" =~ ^/[A-Za-z0-9._/-]+$ && "$DEPLOY_DIR" != "/" \
+   && ! "$DEPLOY_DIR" =~ (^|/)\.\.(/|$) ]] || {
   echo "❌ DEPLOY_DIR 必须是安全的绝对路径且不能为根目录：$DEPLOY_DIR"
   exit 1
 }
 command -v tar >/dev/null || { echo "❌ 缺少 tar"; exit 1; }
 
 step "0/5 预检服务器 SSH 连通性（${SSH_USER}@${SSH_HOST}:${SSH_PORT}）"
-if ! "${SSH[@]}" "$REMOTE" 'command -v tar >/dev/null && echo SSH_OK' \
-     2>/dev/null | grep -q SSH_OK; then
+if ! retry "SSH 预检" "${SSH[@]}" "$REMOTE" 'command -v tar >/dev/null'; then
   echo "❌ 无法 SSH 到服务器（检查网络/密钥/端口）"
   exit 1
 fi
@@ -129,22 +163,54 @@ fi
 
 # ---------- 3/5 上传产物 ----------
 step "3/5 上传产物到服务器"
-"${SSH[@]}" "$REMOTE" "mkdir -p '$DEPLOY_DIR/backend' '$DEPLOY_DIR/web-image/web'"
-"${SCP[@]}" "$JAR" "$REMOTE:$DEPLOY_DIR/backend/app.jar.uploading"
-"${SSH[@]}" "$REMOTE" \
-  "set -e; if [ -f '$DEPLOY_DIR/backend/app.jar' ]; then \
-     mv -f '$DEPLOY_DIR/backend/app.jar' '$DEPLOY_DIR/backend/app.jar.previous'; fi; \
-   mv -f '$DEPLOY_DIR/backend/app.jar.uploading' '$DEPLOY_DIR/backend/app.jar'"
+retry "创建服务器部署目录" "${SSH[@]}" "$REMOTE" \
+  "mkdir -p '$DEPLOY_DIR/backend' '$DEPLOY_DIR/web-image/web'"
+
+command -v sha256sum >/dev/null || { echo "❌ 缺少 sha256sum，无法校验上传产物"; exit 1; }
+JAR_SHA="$(sha256sum "$JAR" | cut -d ' ' -f1)"
+JAR_STAGE="$DEPLOY_DIR/backend/app.jar.uploading"
+JAR_TARGET="$DEPLOY_DIR/backend/app.jar"
+JAR_PREVIOUS="$DEPLOY_DIR/backend/app.jar.previous"
+
+# 上次可能已传完整文件，但 scp/SSH 的最终回执丢失；先校验，避免再传 184 MB。
+STAGED_SHA="$(retry "检查服务器暂存 jar" remote_sha "$JAR_STAGE")"
+if [ "$STAGED_SHA" = "$JAR_SHA" ]; then
+  echo "   ✓ 暂存 jar 已完整，跳过重复上传"
+else
+  UPLOAD_VERIFIED=false
+  for ((attempt=1; attempt<=3; attempt++)); do
+    if "${SCP[@]}" "$JAR" "$REMOTE:$JAR_STAGE"; then
+      echo "   ✓ scp 传输返回成功"
+    else
+      echo "   ⚠ scp 未正常返回，检查服务器上的文件校验值（第 $attempt/3 次）" >&2
+    fi
+    STAGED_SHA="$(retry "校验服务器暂存 jar" remote_sha "$JAR_STAGE")"
+    if [ "$STAGED_SHA" = "$JAR_SHA" ]; then UPLOAD_VERIFIED=true; break; fi
+    echo "   ⚠ 暂存 jar 校验不一致，准备重新上传（第 $attempt/3 次）" >&2
+  done
+  [ "$UPLOAD_VERIFIED" = true ] || { echo "❌ jar 上传三次后仍不完整" >&2; exit 1; }
+fi
+
+# 先复制旧版本留回退，再原子切换。若切换成功但 SSH 回执丢失，重试只验正式文件。
+retry "切换后端 jar" "${SSH[@]}" "$REMOTE" \
+  "set -e; if [ -f '$JAR_STAGE' ]; then \
+     if [ -f '$JAR_TARGET' ]; then cp -f '$JAR_TARGET' '$JAR_PREVIOUS'; fi; \
+     mv -f '$JAR_STAGE' '$JAR_TARGET'; \
+   fi; printf '%s  %s\n' '$JAR_SHA' '$JAR_TARGET' | sha256sum -c - >/dev/null"
 echo "   ✓ backend/app.jar"
 upload_tree "$WEB_UPLOAD_SOURCE" "$WEB_UPLOAD_TARGET"
 echo "   ✓ $WEB_UPLOAD_TARGET"
-"${SCP[@]}" deploy/nginx.conf "$REMOTE:$DEPLOY_DIR/web-image/nginx.conf.uploading"
-"${SSH[@]}" "$REMOTE" \
-  "mv -f '$DEPLOY_DIR/web-image/nginx.conf.uploading' '$DEPLOY_DIR/web-image/nginx.conf'"
+retry "上传 nginx.conf" "${SCP[@]}" deploy/nginx.conf "$REMOTE:$DEPLOY_DIR/web-image/nginx.conf.uploading"
+retry "切换 nginx.conf" "${SSH[@]}" "$REMOTE" \
+  "set -e; if [ -f '$DEPLOY_DIR/web-image/nginx.conf.uploading' ]; then \
+     mv -f '$DEPLOY_DIR/web-image/nginx.conf.uploading' '$DEPLOY_DIR/web-image/nginx.conf'; fi; \
+   test -f '$DEPLOY_DIR/web-image/nginx.conf'"
 echo "   ✓ web-image/nginx.conf"
-"${SCP[@]}" deploy/deploy-prod.sh "$REMOTE:$DEPLOY_DIR/deploy-prod.sh.uploading"
-"${SSH[@]}" "$REMOTE" \
-  "mv -f '$DEPLOY_DIR/deploy-prod.sh.uploading' '$DEPLOY_DIR/deploy-prod.sh'"
+retry "上传 deploy-prod.sh" "${SCP[@]}" deploy/deploy-prod.sh "$REMOTE:$DEPLOY_DIR/deploy-prod.sh.uploading"
+retry "切换 deploy-prod.sh" "${SSH[@]}" "$REMOTE" \
+  "set -e; if [ -f '$DEPLOY_DIR/deploy-prod.sh.uploading' ]; then \
+     mv -f '$DEPLOY_DIR/deploy-prod.sh.uploading' '$DEPLOY_DIR/deploy-prod.sh'; fi; \
+   test -f '$DEPLOY_DIR/deploy-prod.sh'"
 echo "   ✓ deploy-prod.sh"
 
 # ---------- 4/5 服务器执行部署 ----------

@@ -1,7 +1,7 @@
 package interview.homegrown.modules.drill.service;
 
-import interview.homegrown.common.ai.AiConfig;
-import interview.homegrown.common.ai.AiSettingsService;
+import interview.homegrown.common.async.DurableJobQueue;
+import interview.homegrown.common.async.DurableJobType;
 import interview.homegrown.modules.drill.domain.Concept;
 import interview.homegrown.modules.drill.domain.DailyTask;
 import interview.homegrown.modules.drill.domain.Mastery;
@@ -18,8 +18,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -31,8 +33,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
@@ -47,7 +47,7 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
  *       层掌握率 = 该层内写达标（mastery_level&gt;=2）的概念数 / 该层概念总数；
  *       L1 达标 50% 才解锁 L2，L2 达标 50% 才解锁 L3，以此类推——一开始 L1 没掌握就只出 L1 的题，
  *       用户手动指定层级（「练这一层」）不受此门槛限制。</li>
- *   <li>落表 PENDING → 线程池异步出题（复用 {@link QuestionService} 去重/跨知识点逻辑）→ READY。</li>
+ *   <li>落表 PENDING → 持久任务异步出题（复用 {@link QuestionService} 去重/跨知识点逻辑）→ READY。</li>
  * </ul>
  *
  * <p>触发：{@link #generateAll()} 每天 06:30 全员预生成；{@link #ensureToday(Long)} 懒兜底（用户访问今日任务/复盘时
@@ -77,15 +77,16 @@ public class DailyPlanService {
     private final QuestionService questionService;
     private final CorpusService corpusService;
     private final ProgressContextService progressContext;
-    private final AiSettingsService settings;
-
-    private final ExecutorService generatorPool;
+    private final DurableJobQueue jobs;
+    private final JdbcTemplate jdbc;
+    private final TransactionTemplate transactions;
 
     public DailyPlanService(DailyTaskRepository taskRepo, StudyPlanRepository planRepo,
                             ConceptRepository conceptRepo, MasteryRepository masteryRepo,
                             QuestionBankRepository qbRepo, SelectionService selectionService,
                             QuestionService questionService, CorpusService corpusService,
-                            ProgressContextService progressContext, AiSettingsService settings) {
+                            ProgressContextService progressContext,
+                            DurableJobQueue jobs, JdbcTemplate jdbc, TransactionTemplate transactions) {
         this.taskRepo = taskRepo;
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
@@ -95,12 +96,9 @@ public class DailyPlanService {
         this.questionService = questionService;
         this.corpusService = corpusService;
         this.progressContext = progressContext;
-        this.settings = settings;
-        this.generatorPool = Executors.newFixedThreadPool(2, r -> {
-            Thread t = new Thread(r, "daily-task-gen");
-            t.setDaemon(true);
-            return t;
-        });
+        this.jobs = jobs;
+        this.jdbc = jdbc;
+        this.transactions = transactions;
     }
 
     /** 定时：每天 06:30 为所有用户预生成今日任务（主动推送的承载——打开即 READY，无需等待）。 */
@@ -108,11 +106,17 @@ public class DailyPlanService {
     public void generateAll() {
         for (Long uid : planRepo.findDistinctUserIds()) {
             try {
-                ensureToday(uid);
+                transactions.execute(status -> ensureToday(uid));
             } catch (Exception e) {
                 log.warn("定时生成今日任务失败 uid={}: {}", uid, e.getMessage());
             }
         }
+    }
+
+    /** 服务在 06:30 停机时补排今天的任务；每日任务与队列均按实体幂等。 */
+    @Scheduled(fixedDelay = 1800000, initialDelay = 10000)
+    public void recoverMissedDailySchedule() {
+        generateAll();
     }
 
     /**
@@ -145,7 +149,7 @@ public class DailyPlanService {
         skipOrphaned(existing);
         for (DailyTask t : existing) {
             if (DailyTask.STATUS_PENDING.equals(t.getStatus()) && t.getQuestionId() == null) {
-                generateAsync(t.getId());
+                jobs.enqueue(DurableJobType.DAILY_QUESTION, t.getId(), userId, false, false);
             }
         }
         return existing;
@@ -254,17 +258,20 @@ public class DailyPlanService {
     }
 
     /** 同步兜底出题：预生成还没好（PENDING）时现场出一题，保证任务可立即开练。 */
-    @Transactional
     public boolean ensureReady(Long userId, Long taskId) {
         DailyTask t = requireTask(userId, taskId);
         if (t.getQuestionId() == null) {
             SelectedTask sel = selectionService.pickFor(userId, t.getConceptId());
             QuestionBank qb = questionService.generate(sel, taskContext(t));
-            t.setQuestionId(qb.getId());
-            t.setStatus(DailyTask.STATUS_READY);
-            taskRepo.save(t);
+            int updated = jdbc.update("""
+                    UPDATE daily_task SET question_id = ?, status = 'READY', updated_at = now()
+                    WHERE id = ? AND user_id = ? AND status = 'PENDING' AND question_id IS NULL
+                    """, qb.getId(), taskId, userId);
+            if (updated == 0) qbRepo.deleteById(qb.getId());
         }
-        return t.getQuestionId() != null;
+        Long questionId = jdbc.queryForObject(
+                "SELECT question_id FROM daily_task WHERE id = ? AND user_id = ?", Long.class, taskId, userId);
+        return questionId != null;
     }
 
     /** 出题上下文：学生进度/概念要点 + 复习任务聚焦的子点约束（与 openRun 的 focus 语义一致）。 */
@@ -397,31 +404,28 @@ public class DailyPlanService {
         return userId * 1_000_003L + planId * 31L + date.toEpochDay();
     }
 
-    /**
-     * 异步预出题：READY 后回填 question_id。失败保持 PENDING，下次 ensureToday 重试。
-     * 线程内重新加载实体，避免跨线程改已分离实体。
-     */
-    private void generateAsync(Long taskId) {
-        generatorPool.submit(() -> {
-            try {
-                DailyTask t = taskRepo.findById(taskId).orElse(null);
-                if (t == null || t.getQuestionId() != null) return;
-                // 后台线程没有请求上下文，取任务归属用户的库配置（否则云端无服务器级 key，
-                // 预生成全部报"尚未配置 API Key"、任务永远 PENDING）
-                settings.withTaskConfig(settings.userConfig(t.getUserId()), () -> {
-                    try {
-                        SelectedTask sel = selectionService.pickFor(t.getUserId(), t.getConceptId());
-                        QuestionBank qb = questionService.generate(sel, taskContext(t));
-                        t.setQuestionId(qb.getId());
-                        t.setStatus(DailyTask.STATUS_READY);
-                        taskRepo.save(t);
-                    } catch (Exception e) {
-                        log.warn("预生成题目失败 taskId={}: {}", taskId, e.getMessage());
-                    }
-                });
-            } catch (Exception e) {
-                log.warn("预生成调度失败 taskId={}: {}", taskId, e.getMessage());
-            }
-        });
+    /** 后台消费持久任务；条件更新避免与用户同步开练竞争覆盖。 */
+    public void runJob(Long taskId, Long userId) {
+        DailyTask task = taskRepo.findById(taskId).orElse(null);
+        if (task == null || !userId.equals(task.getUserId())
+                || !DailyTask.STATUS_PENDING.equals(task.getStatus()) || task.getQuestionId() != null) return;
+        if (task.getTaskDate().isBefore(LocalDate.now())) {
+            jdbc.update("UPDATE daily_task SET status = 'SKIPPED', updated_at = now() WHERE id = ? AND status = 'PENDING'",
+                    taskId);
+            return;
+        }
+        if (!conceptRepo.existsById(task.getConceptId())
+                || (task.getPlanId() != null && !planRepo.existsById(task.getPlanId()))) {
+            jdbc.update("UPDATE daily_task SET status = 'SKIPPED', updated_at = now() WHERE id = ? AND status = 'PENDING'",
+                    taskId);
+            return;
+        }
+        SelectedTask selected = selectionService.pickFor(userId, task.getConceptId());
+        QuestionBank question = questionService.generate(selected, taskContext(task));
+        int updated = jdbc.update("""
+                UPDATE daily_task SET question_id = ?, status = 'READY', updated_at = now()
+                WHERE id = ? AND user_id = ? AND status = 'PENDING' AND question_id IS NULL
+                """, question.getId(), taskId, userId);
+        if (updated == 0) qbRepo.deleteById(question.getId());
     }
 }

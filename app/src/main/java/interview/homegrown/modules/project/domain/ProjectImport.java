@@ -32,7 +32,7 @@ public class ProjectImport {
     @Column(name = "tech_stack", columnDefinition = "text")
     private String techStack;
 
-    /** 导入后项目所在路径（zip 解压到临时目录，或本地路径直指）。 */
+    /** 导入后项目所在路径（zip 解压到持久文件目录，或本地路径直指）。 */
     @Column(name = "root_path", nullable = false, columnDefinition = "text")
     private String rootPath;
 
