@@ -13,8 +13,8 @@ import interview.homegrown.modules.interview.repository.InterviewSessionReposito
 import interview.homegrown.modules.resume.model.ResumeEntity;
 import interview.homegrown.modules.resume.repository.ResumeRepository;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
-import interview.homegrown.modules.drill.repository.StudyPlanRepository;
-import interview.homegrown.modules.drill.service.CorpusLibraryService;
+import interview.homegrown.modules.studyplan.repository.StudyPlanRepository;
+import interview.homegrown.modules.corpus.service.CorpusLibraryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

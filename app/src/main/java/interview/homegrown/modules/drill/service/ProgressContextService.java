@@ -1,17 +1,17 @@
 package interview.homegrown.modules.drill.service;
 
 import interview.homegrown.modules.drill.domain.Concept;
-import interview.homegrown.modules.drill.domain.Corpus;
-import interview.homegrown.modules.drill.domain.CorpusChunk;
+import interview.homegrown.modules.corpus.domain.Corpus;
+import interview.homegrown.modules.corpus.domain.CorpusChunk;
 import interview.homegrown.modules.drill.domain.Mastery;
-import interview.homegrown.modules.drill.domain.StudyPlan;
+import interview.homegrown.modules.studyplan.domain.StudyPlan;
 import interview.homegrown.modules.drill.domain.WebContent;
 import interview.homegrown.modules.drill.repository.ConceptChunkRepository;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
-import interview.homegrown.modules.drill.repository.CorpusChunkRepository;
-import interview.homegrown.modules.drill.repository.CorpusRepository;
+import interview.homegrown.modules.corpus.repository.CorpusChunkRepository;
+import interview.homegrown.modules.corpus.repository.CorpusRepository;
 import interview.homegrown.modules.drill.repository.MasteryRepository;
-import interview.homegrown.modules.drill.repository.StudyPlanRepository;
+import interview.homegrown.modules.studyplan.repository.StudyPlanRepository;
 import interview.homegrown.modules.drill.repository.WebContentRepository;
 import org.springframework.stereotype.Service;
 
