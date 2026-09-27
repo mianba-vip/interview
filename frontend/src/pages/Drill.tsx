@@ -5,7 +5,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { keymap, EditorView } from '@codemirror/view';
-import { drill, aiSettings, chatStream, lessonChatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
+import { drill, aiSettings, chatStream, lessonChatStream, lessonStream, type TutorStream } from '../api/drill';
 import { Button, Tag } from '../components/ui';
 import { NoteDialog } from '../components/NoteDialog';
 import { ApiError } from '../api/client';
@@ -14,6 +14,7 @@ import type { QuestionView, QuestionMeta, GradeView, PlanView, ConversationView,
 import { ConversationStream, VerdictPanel } from '../components/ConversationStream';
 import { Markdown } from '../components/Markdown';
 import { Plans } from './Plans';
+import { getCachedStudyPlans } from '../lib/useDashboardData';
 import './Drill.css';
 
 function fmt(sec: number): string {
@@ -357,7 +358,7 @@ export function Drill() {
   // —— 加载学习方向列表 ——
   const loadPlans = useCallback(async () => {
     try {
-      setPlans(await studyPlan.list());
+      setPlans(await getCachedStudyPlans());
     } catch (e) {
       setPlanErr(e instanceof ApiError ? e.message : '加载失败');
     }

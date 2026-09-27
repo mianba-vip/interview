@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NotebookPen, Repeat2, Trash2 } from 'lucide-react';
-import { drill, studyPlan } from '../api/drill';
+import { drill } from '../api/drill';
 import { ApiError } from '../api/client';
 import { Loading, Badge } from '../components/ui';
 import { useActivePlan } from '../lib/useActivePlan';
+import { getCachedStudyPlans } from '../lib/useDashboardData';
 import { GRADE_LABEL, gradeClass } from '../lib/labels';
 import type { RunSummaryView, PlanView } from '../api/types';
 import './History.css';
@@ -24,7 +25,7 @@ export function HistoryPage() {
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    Promise.all([drill.history(), studyPlan.list()])
+    Promise.all([drill.history(), getCachedStudyPlans()])
       .then(([rows, p]) => {
         if (alive) {
           setItems(rows);

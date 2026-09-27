@@ -1,11 +1,12 @@
 import {useEffect, useState} from 'react';
 import { MicOff, CheckCircle2, XCircle, RotateCcw, MessagesSquare } from 'lucide-react';
-import {drill, rehearsalAnswerStream, studyPlan} from '../api/drill';
+import {drill, rehearsalAnswerStream} from '../api/drill';
 import { Button, Badge, Loading } from '../components/ui';
 import { ApiError } from '../api/client';
 import { GRADE_LABEL, gradeClass } from '../lib/labels';
 import type {PlanView, RehearsalView} from '../api/types';
 import { Markdown } from '../components/Markdown';
+import { getCachedStudyPlans } from '../lib/useDashboardData';
 import './Rehearsal.css';
 
 function msg(e: unknown): string {
@@ -24,7 +25,7 @@ export function Rehearsal() {
   const [plans, setPlans] = useState<PlanView[]>([]);
 
   useEffect(() => {
-    studyPlan.list().then(setPlans).catch(() => {});
+    getCachedStudyPlans().then(setPlans).catch(() => {});
   }, []);
 
   const start = async () => {

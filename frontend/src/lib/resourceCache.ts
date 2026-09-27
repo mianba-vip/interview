@@ -73,6 +73,20 @@ export class ResourceCache<T extends object> {
     return Promise.all(keys.map((key) => this.load(key, force))).then(() => undefined);
   }
 
+  /** 非 Hook 页面复用同一份短时缓存，首次/过期读取等待新值，失败时保留旧值。 */
+  async getValue<K extends keyof T>(key: K): Promise<T[K]> {
+    const entry = this.entries.get(key)!;
+    // 读取途中若有写入使请求作废，命令式页面也要等新版本，不能取旧快照。
+    while (!this.disposed) {
+      const version = entry.version;
+      await this.load(key, false);
+      if (entry.version === version) break;
+    }
+    const value = this.snapshot.data[key];
+    if (value === null) throw new Error(`${String(key)} 加载失败`);
+    return value;
+  }
+
   refreshWatched = (): void => {
     void this.refresh(this.keys.filter((key) => this.entries.get(key)!.watchers > 0));
   };
@@ -139,5 +153,60 @@ export class ResourceCache<T extends object> {
       });
     this.publish();
     return entry.pending;
+  }
+}
+
+/** 按 ID 缓存详情请求；与首页缓存一样只保留在当前会话内，默认 60 秒过期。 */
+export class KeyedResourceCache<K, V> {
+  private readonly loader: (key: K) => Promise<V>;
+  private readonly ttl: number;
+  private readonly clock: () => number;
+  private readonly entries = new Map<K, {
+    value: V | null;
+    updatedAt: number;
+    pending: Promise<V> | null;
+  }>();
+
+  constructor(
+    loader: (key: K) => Promise<V>,
+    ttl = 60_000,
+    clock: () => number = Date.now,
+  ) {
+    this.loader = loader;
+    this.ttl = ttl;
+    this.clock = clock;
+  }
+
+  get(key: K): Promise<V> {
+    let entry = this.entries.get(key);
+    if (!entry) {
+      entry = { value: null, updatedAt: 0, pending: null };
+      this.entries.set(key, entry);
+    }
+    if (entry.value !== null && this.clock() - entry.updatedAt < this.ttl) {
+      return Promise.resolve(entry.value);
+    }
+    if (entry.pending) return entry.pending;
+
+    const current = entry;
+    const request = Promise.resolve().then(() => this.loader(key)).then((value) => {
+      if (this.entries.get(key) === current) {
+        current.value = value;
+        current.updatedAt = this.clock();
+      }
+      return value;
+    }).finally(() => {
+      if (current.pending === request) current.pending = null;
+    });
+    current.pending = request;
+    return request;
+  }
+
+  set(key: K, value: V): void {
+    this.entries.set(key, { value, updatedAt: this.clock(), pending: null });
+  }
+
+  clear(): void {
+    this.entries.clear();
   }
 }
