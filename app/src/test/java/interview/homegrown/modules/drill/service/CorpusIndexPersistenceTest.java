@@ -1,7 +1,7 @@
 package interview.homegrown.modules.drill.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import interview.homegrown.common.ai.AiSettingsService;
+import interview.homegrown.common.async.DurableJobQueue;
 import interview.homegrown.common.ai.StructuredOutputInvoker;
 import interview.homegrown.modules.drill.domain.Corpus;
 import interview.homegrown.modules.drill.domain.CorpusChunk;
@@ -47,8 +47,8 @@ class CorpusIndexPersistenceTest {
       assertThat(saved).extracting(CorpusChunk::getTitle).containsOnly("数据预处理");
       return saved;
     }).when(chunks).saveAll(any());
-    var indexer = new CorpusIndexer(corpora, chunks, invoker, new ObjectMapper(), mock(AiSettingsService.class), tx);
-    try { indexer.index(1L, true); } finally { indexer.shutdown(); }
+    var indexer = new CorpusIndexer(corpora, chunks, invoker, new ObjectMapper(), mock(DurableJobQueue.class), tx);
+    indexer.index(1L, true);
     verify(chunks, never()).deleteByCorpusId(any());
   }
 
@@ -74,8 +74,8 @@ class CorpusIndexPersistenceTest {
       assertThat(saved).hasSize(1); assertThat(saved.getFirst().getText()).contains("核心线程和工作队列");
       assertThat(saved.getFirst().getTopic()).isEqualTo("线程池"); assertThat(inTransaction[0]).isTrue(); return saved;
     }).when(chunks).saveAll(any());
-    var indexer = new CorpusIndexer(corpora, chunks, invoker, new ObjectMapper(), mock(AiSettingsService.class), tx);
-    try { indexer.index(1L, false); } finally { indexer.shutdown(); }
+    var indexer = new CorpusIndexer(corpora, chunks, invoker, new ObjectMapper(), mock(DurableJobQueue.class), tx);
+    indexer.index(1L, false);
     assertThat(c.getOverview()).isEqualTo("理解线程池机制"); assertThat(c.getIndexState()).isEqualTo("READY");
   }
 }

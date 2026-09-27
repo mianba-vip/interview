@@ -16,12 +16,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.TransactionStatus;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doAnswer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -30,8 +34,11 @@ class CorpusStorageTest {
   final CorpusRepository repo = mock(CorpusRepository.class);
   final InterviewSessionRepository interviews = mock(InterviewSessionRepository.class);
   CorpusService service(FileStorageService files) {
+    TransactionTemplate transactions = mock(TransactionTemplate.class);
+    doAnswer(call -> call.<TransactionCallback<?>>getArgument(0).doInTransaction(mock(TransactionStatus.class)))
+        .when(transactions).execute(any());
     return new CorpusService(repo, mock(StudyPlanRepository.class), mock(ConceptRepository.class), mock(FileParser.class), mock(CorpusIndexer.class),
-        mock(CorpusLibraryService.class), interviews, files, new DocumentParseService(new TextCleaningService()), mock(AiSettingsService.class));
+        mock(CorpusLibraryService.class), interviews, files, new DocumentParseService(new TextCleaningService()), mock(AiSettingsService.class), transactions);
   }
   @Test @DisplayName("上传保留原始文件，删除仅在事务提交后清理，拒绝任意路径读取")
   void originalLifecycle() throws Exception {

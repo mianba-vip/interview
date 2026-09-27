@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -75,11 +76,13 @@ public class CorpusService {
     private final FileStorageService storage;
     private final DocumentParseService documentParser;
     private final AiSettingsService settings;
+    private final TransactionTemplate transactions;
 
     public CorpusService(CorpusRepository corpusRepo, StudyPlanRepository planRepo,
                          ConceptRepository conceptRepo, FileParser parser, CorpusIndexer indexer,
                          CorpusLibraryService library, InterviewSessionRepository interviews,
-                         FileStorageService storage, DocumentParseService documentParser, AiSettingsService settings) {
+                         FileStorageService storage, DocumentParseService documentParser, AiSettingsService settings,
+                         TransactionTemplate transactions) {
         this.corpusRepo = corpusRepo;
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
@@ -87,6 +90,7 @@ public class CorpusService {
         this.indexer = indexer;
         this.library = library; this.interviews = interviews; this.storage = storage;
         this.documentParser = documentParser; this.settings = settings;
+        this.transactions = transactions;
     }
 
     @Transactional
@@ -136,13 +140,16 @@ public class CorpusService {
         c.setOriginalType(mime);
         Corpus saved;
         try {
-            saved = corpusRepo.save(c);
+            saved = transactions.execute(status -> {
+                Corpus created = corpusRepo.save(c);
+                indexer.indexAsync(created.getId());
+                return created;
+            });
         } catch (Exception e) {
             storage.delete(c.getOriginalKey());
             throw e;
         }
-        // 异步拆块 + 知识点标注（不阻塞上传请求）
-        indexer.indexAsync(saved.getId());
+        // 资料行与索引任务在同一事务中提交，消费者只会看到已提交的原文。
         return saved;
     }
 
@@ -242,9 +249,11 @@ public class CorpusService {
         c.setSourceType(sourceType);
         c.setText(merged);
         c.setCharCount(merged.length());
-        Corpus saved = corpusRepo.save(c);
-        indexer.indexAsync(saved.getId());
-        return saved;
+        return transactions.execute(status -> {
+            Corpus saved = corpusRepo.save(c);
+            indexer.indexAsync(saved.getId());
+            return saved;
+        });
     }
 
     private boolean isSkippedDir(Path p) {

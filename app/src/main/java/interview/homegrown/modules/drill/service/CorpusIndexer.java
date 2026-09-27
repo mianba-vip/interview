@@ -2,6 +2,8 @@ package interview.homegrown.modules.drill.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.common.ai.StructuredOutputInvoker;
+import interview.homegrown.common.async.DurableJobQueue;
+import interview.homegrown.common.async.DurableJobType;
 import interview.homegrown.modules.drill.domain.Corpus;
 import interview.homegrown.modules.drill.domain.CorpusChunk;
 import interview.homegrown.modules.drill.repository.CorpusChunkRepository;
@@ -12,14 +14,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.Set;
-import jakarta.annotation.PreDestroy;
-import interview.homegrown.common.ai.AiSettingsService;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -54,23 +48,17 @@ public class CorpusIndexer {
     private final CorpusChunkRepository chunkRepo;
     private final StructuredOutputInvoker invoker;
     private final ObjectMapper objectMapper;
-    private final AiSettingsService settings;
+    private final DurableJobQueue jobs;
     private final TransactionTemplate transactions;
-    private final Set<Long> running = ConcurrentHashMap.newKeySet();
-    private final ExecutorService pool = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(64), r -> {
-        Thread t = new Thread(r, "corpus-indexer");
-        t.setDaemon(true);
-        return t;
-    }, new ThreadPoolExecutor.AbortPolicy());
 
     public CorpusIndexer(CorpusRepository corpusRepo, CorpusChunkRepository chunkRepo,
                          StructuredOutputInvoker invoker, ObjectMapper objectMapper,
-                         AiSettingsService settings, TransactionTemplate transactions) {
+                         DurableJobQueue jobs, TransactionTemplate transactions) {
         this.corpusRepo = corpusRepo;
         this.chunkRepo = chunkRepo;
         this.invoker = invoker;
         this.objectMapper = objectMapper;
-        this.settings = settings;
+        this.jobs = jobs;
         this.transactions = transactions;
     }
 
@@ -80,28 +68,23 @@ public class CorpusIndexer {
     }
 
     public void indexAsync(Long corpusId, boolean refresh) {
-        if (corpusId == null || !running.add(corpusId)) return;
-        var snapshot = settings.currentProviderForRequest();
-        try {
-          pool.submit(() -> settings.withTaskConfig(snapshot, () -> {
-            try {
-                index(corpusId, refresh);
-            } catch (Exception e) {
-                log.warn("资料索引失败 (corpusId={})", corpusId, e);
-                updateState(corpusId, "FAILED");
-            } finally {
-                running.remove(corpusId);
-            }
-          }));
-        } catch (java.util.concurrent.RejectedExecutionException busy) {
-            running.remove(corpusId);
-            updateState(corpusId, "FAILED");
-            log.warn("资料索引队列繁忙，用户可稍后重试: corpusId={}", corpusId);
-        }
+        if (corpusId == null) return;
+        Corpus corpus = corpusRepo.findById(corpusId).orElse(null);
+        if (corpus != null) jobs.enqueue(DurableJobType.CORPUS_INDEX, corpusId, corpus.getUserId(), refresh, refresh);
     }
 
-    @PreDestroy
-    void shutdown() { pool.shutdownNow(); }
+    public void runJob(Long corpusId, Long userId, boolean refresh) {
+        Corpus corpus = corpusRepo.findById(corpusId).orElse(null);
+        if (corpus == null || !userId.equals(corpus.getUserId())) return;
+        index(corpusId, refresh);
+    }
+
+    public void markJobFailure(Long corpusId, Long userId, boolean dead) {
+        Corpus corpus = corpusRepo.findById(corpusId).orElse(null);
+        if (corpus != null && userId.equals(corpus.getUserId())) {
+            updateState(corpusId, dead ? "FAILED" : "PENDING");
+        }
+    }
 
     private void updateState(Long id, String state) {
         transactions.executeWithoutResult(status -> corpusRepo.findLockedById(id).ifPresent(c -> {
@@ -111,7 +94,13 @@ public class CorpusIndexer {
 
     void index(Long corpusId, boolean refresh) {
         if (corpusId == null) return;
-        if (!refresh && chunkRepo.countByCorpusId(corpusId) > 0) return;
+        if (!refresh && chunkRepo.countByCorpusId(corpusId) > 0) {
+            Corpus indexed = corpusRepo.findById(corpusId).orElse(null);
+            if (indexed != null && ("RUNNING".equals(indexed.getIndexState()) || "PENDING".equals(indexed.getIndexState()))) {
+                updateState(corpusId, "READY");
+            }
+            return;
+        }
         Corpus corpus = corpusRepo.findById(corpusId).orElse(null);
         if (corpus == null || corpus.getText() == null || corpus.getText().isBlank()) return;
 
@@ -128,7 +117,7 @@ public class CorpusIndexer {
         }
         var sections = CorpusOutline.sections(raw);
         List<Chunk> chunks = sections.stream().map(s -> new Chunk(s.title(), s.text())).toList();
-        if (chunks.isEmpty()) return;
+        if (chunks.isEmpty()) throw new IllegalStateException("资料没有可索引章节");
 
         IndexOutput out = annotate(corpus, chunks);
         String overview = out != null && out.overview() != null && !out.overview().isBlank()
