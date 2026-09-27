@@ -1,7 +1,10 @@
 package interview.homegrown.common.web;
 
+import io.micrometer.context.ContextSnapshot;
+import io.micrometer.context.ContextSnapshotFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContext;
@@ -15,6 +18,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.Map;
 
 /**
  * SSE 流式端点统一入口：Spring 官方 {@link SseEmitter} 通道 + 统一帧封装 + 心跳保活。
@@ -71,7 +75,10 @@ public final class SseStream {
         // RequestContextHolder 读桌面端 X-LLM-Key 头），不复制会误报"尚未配置 API Key"。
         SecurityContext security = SecurityContextHolder.getContext();
         RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
-        HANDLERS.execute(() -> {
+        ContextSnapshot tracingContext = ContextSnapshotFactory.builder().build().captureAll();
+        Map<String, String> loggingContext = MDC.getCopyOfContextMap();
+        HANDLERS.execute(tracingContext.wrap(() -> {
+            if (loggingContext != null) MDC.setContextMap(loggingContext);
             SecurityContextHolder.setContext(security);
             if (requestAttributes != null) {
                 RequestContextHolder.setRequestAttributes(requestAttributes);
@@ -86,8 +93,9 @@ public final class SseStream {
                 sink.finish();
                 SecurityContextHolder.clearContext();
                 RequestContextHolder.resetRequestAttributes();
+                MDC.clear();
             }
-        });
+        }));
         return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_EVENT_STREAM)
                 .header("Cache-Control", "no-cache")

@@ -1,6 +1,7 @@
 package interview.homegrown.common.ai;
 
 import interview.homegrown.common.config.AiConfigProperties;
+import interview.homegrown.common.observability.AiTelemetry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -45,7 +46,8 @@ class StructuredOutputInvokerTest {
         when(raw.availableForCurrentRequest()).thenReturn(true);
         when(raw.complete(anyString(), anyString())).thenReturn("{\"reply\":\"好的，这就帮你规划\"}");
 
-        StructuredOutputInvoker invoker = new StructuredOutputInvoker(registry, configWithOneAttempt(), raw);
+        StructuredOutputInvoker invoker = new StructuredOutputInvoker(registry, configWithOneAttempt(), raw,
+                mock(AiTelemetry.class));
         DemoOutput out = invoker.invoke("system", "user", DemoOutput.class);
 
         assertThat(out).isNotNull();
@@ -63,7 +65,8 @@ class StructuredOutputInvokerTest {
         LlmRawClient raw = mock(LlmRawClient.class);
         when(raw.availableForCurrentRequest()).thenReturn(false);
 
-        StructuredOutputInvoker invoker = new StructuredOutputInvoker(registry, configWithOneAttempt(), raw);
+        StructuredOutputInvoker invoker = new StructuredOutputInvoker(registry, configWithOneAttempt(), raw,
+                mock(AiTelemetry.class));
         assertThatThrownBy(() -> invoker.invoke("system", "user", DemoOutput.class))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(e -> ((ResponseStatusException) e).getStatusCode())

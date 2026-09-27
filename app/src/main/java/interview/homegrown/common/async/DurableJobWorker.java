@@ -2,12 +2,14 @@ package interview.homegrown.common.async;
 
 import interview.homegrown.common.ai.AiConfig;
 import interview.homegrown.common.ai.AiSettingsService;
+import interview.homegrown.common.observability.AsyncJobTelemetry;
 import interview.homegrown.modules.drill.service.CorpusIndexer;
 import interview.homegrown.modules.drill.service.DailyPlanService;
 import interview.homegrown.modules.project.service.ProjectAnalysisService;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -27,25 +29,31 @@ public class DurableJobWorker {
     private final ProjectAnalysisService projects;
     private final CorpusIndexer corpora;
     private final DailyPlanService daily;
+    private final AsyncJobTelemetry telemetry;
     private final Semaphore capacity = new Semaphore(2);
     private final ExecutorService workers = Executors.newFixedThreadPool(2);
     private final Map<Long, DurableJob> active = new ConcurrentHashMap<>();
 
     public DurableJobWorker(DurableJobStore store, DurableJobQueue queue, AiSettingsService settings,
-                            ProjectAnalysisService projects, CorpusIndexer corpora, DailyPlanService daily) {
+                            ProjectAnalysisService projects, CorpusIndexer corpora, DailyPlanService daily,
+                            AsyncJobTelemetry telemetry) {
         this.store = store;
         this.queue = queue;
         this.settings = settings;
         this.projects = projects;
         this.corpora = corpora;
         this.daily = daily;
+        this.telemetry = telemetry;
     }
 
     @Scheduled(fixedDelay = 1000)
     public void poll() {
         if (!capacity.tryAcquire()) return;
         try {
-            store.deadLetterExpired().forEach(job -> markBusinessFailure(job, true, "任务执行中断，重试次数已耗尽"));
+            store.deadLetterExpired().forEach(job -> {
+                telemetry.deadLetter(job.type());
+                markBusinessFailure(job, true, "任务执行中断，重试次数已耗尽");
+            });
             var claimed = store.claim();
             if (claimed.isEmpty()) { capacity.release(); return; }
             DurableJob job = claimed.get();
@@ -69,20 +77,25 @@ public class DurableJobWorker {
     }
 
     private void run(DurableJob job) {
-        try {
+        try (MDC.MDCCloseable ignored = MDC.putCloseable("taskId", job.id().toString());
+             AsyncJobTelemetry.Scope observed = telemetry.start(job)) {
             AiConfig config = queue.configFor(job.userId());
             if (job.type() != DurableJobType.CORPUS_INDEX
                     && (config == null || config.apiKey() == null || config.apiKey().isBlank())) {
                 store.waitForConfig(job);
+                observed.outcome("waiting_config");
                 return;
             }
             settings.withTaskConfig(config, () -> execute(job));
-            store.complete(job);
+            observed.outcome(store.complete(job) ? "success" : "lease_lost");
         } catch (Exception e) {
             log.error("异步任务失败 jobId={}, type={}, attempt={}", job.id(), job.type(), job.attempts(), e);
             String safeReason = "执行失败（" + e.getClass().getSimpleName() + "），可在配置和日志检查后重试";
             Boolean dead = store.fail(job, safeReason);
-            if (dead != null) markBusinessFailure(job, dead, safeReason);
+            if (dead != null) {
+                if (dead) telemetry.deadLetter(job.type());
+                markBusinessFailure(job, dead, safeReason);
+            }
         } finally {
             active.remove(job.id());
             capacity.release();

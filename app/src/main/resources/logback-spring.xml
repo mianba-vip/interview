@@ -1,7 +1,30 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <configuration>
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <property name="CONSOLE_LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] traceId=%X{traceId:-} requestId=%X{requestId:-} taskId=%X{taskId:-} sessionId=%X{sessionId:-} %logger{36} : %msg%n%wEx"/>
     <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <springProfile name="production">
+        <appender name="MONITORING_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>/app/logs/backend.log</file>
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                <level>INFO</level>
+            </filter>
+            <encoder>
+                <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>/app/logs/backend.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+                <maxFileSize>20MB</maxFileSize>
+                <maxHistory>7</maxHistory>
+                <totalSizeCap>500MB</totalSizeCap>
+            </rollingPolicy>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="MONITORING_FILE"/>
+        </root>
+    </springProfile>
 
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>

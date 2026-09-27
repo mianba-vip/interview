@@ -3,6 +3,7 @@ package interview.homegrown.common.ai;
 
 import com.openai.core.Timeout;
 import interview.homegrown.common.config.AiConfigProperties;
+import io.micrometer.observation.ObservationRegistry;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,10 +33,12 @@ public class LlmProviderRegistry {
     private static final Logger log = LoggerFactory.getLogger(LlmProviderRegistry.class);
 
     private final AiConfigProperties config;
+    private final ObservationRegistry observations;
     private final Map<String, ChatClient> clients = new ConcurrentHashMap<>();
 
-    public LlmProviderRegistry(AiConfigProperties config) {
+    public LlmProviderRegistry(AiConfigProperties config, ObservationRegistry observations) {
         this.config = config;
+        this.observations = observations;
     }
 
     //启动时初始化所有可用的Provider
@@ -82,9 +85,10 @@ public class LlmProviderRegistry {
                                 .build());
                 OpenAiChatModel chatModel = OpenAiChatModel.builder()
                         .options(options)
+                        .observationRegistry(observations)
                         .httpClientBuilderCustomizer(timeoutCustomizer)
                         .build();
-                ChatClient chatClient = ChatClient.builder(chatModel).build();
+                ChatClient chatClient = ChatClient.builder(chatModel, observations, null, null, null).build();
                 clients.put(name,chatClient);
                 log.info("AI Provider [{}] 初始化成功: model={}, baseUrl={}",
                         name, cfg.getModel(), cfg.getBaseUrl());

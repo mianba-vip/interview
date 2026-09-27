@@ -1,5 +1,9 @@
 package interview.homegrown.common.ai;
 
+import interview.homegrown.common.observability.AiTelemetry;
+import interview.homegrown.common.observability.ObservabilityProperties;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.observation.ObservationRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,7 +38,8 @@ class LlmRawClientStreamTest {
     var config = new AiConfig("deepseek", "https://example.invalid/v1", "test-only", "deepseek-chat", 0.7, "low");
     when(settings.currentProvider()).thenReturn(config);
     when(settings.currentProviderForRequest()).thenReturn(config);
-    client = new LlmRawClient(settings);
+    client = new LlmRawClient(settings, new AiTelemetry(new SimpleMeterRegistry(),
+        ObservationRegistry.create(), new ObservabilityProperties()));
     http = mock(HttpClient.class);
     ReflectionTestUtils.setField(client, "httpClient", http);
   }

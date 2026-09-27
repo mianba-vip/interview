@@ -1,0 +1,94 @@
+# Overlay for the existing production Compose project. Enable explicitly through deploy-prod.sh.
+# Only Grafana is bound to the host, and even that is loopback-only for an SSH tunnel.
+services:
+  backend:
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+      SPRING_CONFIG_ADDITIONAL_LOCATION: optional:file:/app/config/model-prices.yml
+      APP_MANAGEMENT_PORT: "23334"
+      APP_MANAGEMENT_EXPOSURE: health,info,prometheus
+      APP_TRACING_ENABLED: "true"
+      APP_TRACE_SAMPLING: ${APP_TRACE_SAMPLING:-0.1}
+      MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://tempo:4318/v1/traces
+    volumes:
+      - monitoring_backend_logs:/app/logs
+      - ./monitoring/model-prices.yml:/app/config/model-prices.yml:ro
+    # The host mapping is for diagnostics only; Prometheus scrapes backend:23334 on the Compose network.
+    ports:
+      - "127.0.0.1:23334:23334"
+    depends_on:
+      tempo:
+        condition: service_started
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - monitoring_prometheus:/prometheus
+    mem_limit: 384m
+    depends_on:
+      - backend
+
+  tempo:
+    image: grafana/tempo:2.8.3
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ./monitoring/tempo.yml:/etc/tempo/tempo.yml:ro
+      - monitoring_tempo:/var/tempo
+    mem_limit: 384m
+
+  loki:
+    image: grafana/loki:3.7.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./monitoring/loki.yml:/etc/loki/loki.yml:ro
+      - monitoring_loki:/loki
+    mem_limit: 384m
+
+  alloy:
+    image: grafana/alloy:v1.10.2
+    restart: unless-stopped
+    command: ["run", "--storage.path=/var/lib/alloy", "/etc/alloy/config.alloy"]
+    volumes:
+      - ./monitoring/alloy.alloy:/etc/alloy/config.alloy:ro
+      - monitoring_backend_logs:/app/logs:ro
+      - monitoring_alloy:/var/lib/alloy
+    mem_limit: 160m
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?请在服务器 .env 设置 GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SERVER_ROOT_URL: http://localhost:3000
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - monitoring_grafana:/var/lib/grafana
+      - ./monitoring/grafana:/etc/grafana/provisioning:ro
+    mem_limit: 384m
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+
+volumes:
+  monitoring_backend_logs:
+  monitoring_prometheus:
+  monitoring_tempo:
+  monitoring_loki:
+  monitoring_alloy:
+  monitoring_grafana:

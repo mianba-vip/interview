@@ -5,6 +5,7 @@ import interview.homegrown.common.exception.GlobalExceptionHandler;
 import interview.homegrown.modules.drill.domain.Corpus;
 import interview.homegrown.modules.drill.service.CorpusIndexer;
 import interview.homegrown.modules.drill.service.CorpusLibraryService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -32,7 +33,7 @@ class CorpusLibraryControllerTest {
     when(library.fromTicket("ticket")).thenReturn(document);
     when(library.original(document)).thenReturn(new ByteArrayResource(bytes));
     mvc = MockMvcBuilders.standaloneSetup(new CorpusLibraryController(library, mock(CorpusIndexer.class), settings))
-        .setControllerAdvice(new GlobalExceptionHandler()).build();
+        .setControllerAdvice(new GlobalExceptionHandler(new SimpleMeterRegistry())).build();
   }
 
   @Test @DisplayName("详情 GET 路由存在并调用按当前用户隔离的服务")

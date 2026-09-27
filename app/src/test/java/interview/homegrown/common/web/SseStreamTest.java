@@ -1,5 +1,6 @@
 package interview.homegrown.common.web;
 
+import org.slf4j.MDC;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -23,23 +24,28 @@ class SseStreamTest {
     var latch = new CountDownLatch(1);
     var seenPrincipal = new AtomicReference<String>();
     var seenAttrs = new AtomicBoolean(false);
+    var seenRequestId = new AtomicReference<String>();
     var attrs = new ServletRequestAttributes(new MockHttpServletRequest());
     SecurityContextHolder.getContext()
         .setAuthentication(new UsernamePasswordAuthenticationToken("u42", "n/a", List.of()));
     RequestContextHolder.setRequestAttributes(attrs);
+    MDC.put("requestId", "request_12345");
     try {
       SseStream.start(sink -> {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         seenPrincipal.set(auth == null ? null : String.valueOf(auth.getPrincipal()));
         seenAttrs.set(RequestContextHolder.getRequestAttributes() == attrs);
+        seenRequestId.set(MDC.get("requestId"));
         latch.countDown();
       });
       assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
       assertThat(seenPrincipal.get()).isEqualTo("u42");
       assertThat(seenAttrs.get()).isTrue();
+      assertThat(seenRequestId.get()).isEqualTo("request_12345");
     } finally {
       SecurityContextHolder.clearContext();
       RequestContextHolder.resetRequestAttributes();
+      MDC.remove("requestId");
     }
   }
 }

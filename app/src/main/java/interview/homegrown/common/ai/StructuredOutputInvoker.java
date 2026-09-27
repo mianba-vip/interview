@@ -2,9 +2,11 @@ package interview.homegrown.common.ai;
 
 
 import interview.homegrown.common.config.AiConfigProperties;
+import interview.homegrown.common.observability.AiTelemetry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -32,12 +34,14 @@ public class StructuredOutputInvoker {
     private final LlmProviderRegistry registry;
     private final AiConfigProperties config;
     private final LlmRawClient rawClient;
+    private final AiTelemetry telemetry;
 
     public StructuredOutputInvoker(LlmProviderRegistry registry, AiConfigProperties config,
-                                  LlmRawClient rawClient) {
+                                  LlmRawClient rawClient, AiTelemetry telemetry) {
         this.registry = registry;
         this.config = config;
         this.rawClient = rawClient;
+        this.telemetry = telemetry;
     }
 
     /**
@@ -89,9 +93,10 @@ public class StructuredOutputInvoker {
                             "\\n\\n---\\n原始请求：\\n" + userPrompt;
                     log.info("结构化输出重试第 {} 次, 上次错误: {}", attempt + 1, lastError);
                 }
+                if (attempt > 0) telemetry.retry("structured_output");
 
                 // 优先 Spring AI（官方适配器，换模型更通用）；Spring AI 失败/返回空再走原生兜底。
-                String response = rawOrSpring(client, effectiveSystem, currentUser);
+                String response = rawOrSpring(client, effectiveSystem, currentUser, provider);
 
                 if (response == null || response.isBlank()){
                     String effectiveProvider = (provider != null && !provider.isBlank())
@@ -128,18 +133,36 @@ public class StructuredOutputInvoker {
      * Spring AI 读不到 deepseek 的 reasoning_content（私有字段）会抛 "Error reading response"，
      * 若先走它 = 每次白等一次再兜底，出题翻倍变慢；故原生优先，Spring AI 仅作原生不可用时的后备。
      */
-    private String rawOrSpring(ChatClient client, String system, String user) {
+    private String rawOrSpring(ChatClient client, String system, String user, String provider) {
         if (rawClient != null) {
             String r = rawClient.complete(system, user);
             if (r != null && !r.isBlank()) return r;
         }
         // registry 为空（云端）+ rawClient 不可用/失败时：不再走 Spring AI，直接判空由上层重试/抛错
         if (client == null) return null;
+        String effectiveProvider = provider == null || provider.isBlank() ? config.getDefaultProvider() : provider;
+        var providerConfig = config.getProviders().get(effectiveProvider);
+        String model = providerConfig == null ? "unknown" : providerConfig.getModel();
+        AiTelemetry.Call observed = telemetry.start(effectiveProvider, model, "spring");
+        boolean success = false;
         try {
-            return client.prompt().system(system).user(user).call().content();
+            ChatResponse response = client.prompt().system(system).user(user).call().chatResponse();
+            if (response == null || response.getResult() == null) return null;
+            if (response.getMetadata() != null && response.getMetadata().getUsage() != null) {
+                var usage = response.getMetadata().getUsage();
+                Number inputTokens = usage.getPromptTokens();
+                Number outputTokens = usage.getCompletionTokens();
+                observed.usage(inputTokens == null ? 0 : inputTokens.longValue(),
+                        outputTokens == null ? 0 : outputTokens.longValue());
+            }
+            String content = response.getResult().getOutput().getText();
+            success = content != null && !content.isBlank();
+            return content;
         } catch (Exception e) {
             log.warn("Spring AI 调用异常: {}", e.getMessage());
             return null;
+        } finally {
+            observed.finish(success);
         }
     }
 

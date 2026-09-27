@@ -2,6 +2,9 @@ package interview.homegrown.common.async;
 
 import interview.homegrown.common.ai.AiConfig;
 import interview.homegrown.common.ai.AiSettingsService;
+import interview.homegrown.common.observability.AsyncJobTelemetry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.observation.ObservationRegistry;
 import interview.homegrown.modules.drill.service.CorpusIndexer;
 import interview.homegrown.modules.drill.service.DailyPlanService;
 import interview.homegrown.modules.project.service.ProjectAnalysisService;
@@ -30,7 +33,8 @@ class DurableJobWorkerTest {
         when(store.deadLetterExpired()).thenReturn(List.of());
         when(store.claim()).thenReturn(Optional.of(job));
         DurableJobWorker worker = new DurableJobWorker(store, queue, mock(AiSettingsService.class),
-                mock(ProjectAnalysisService.class), mock(CorpusIndexer.class), mock(DailyPlanService.class));
+                mock(ProjectAnalysisService.class), mock(CorpusIndexer.class), mock(DailyPlanService.class),
+                new AsyncJobTelemetry(new SimpleMeterRegistry(), ObservationRegistry.create(), store));
         try {
             worker.poll();
             verify(store, timeout(3000)).waitForConfig(job);
@@ -54,7 +58,8 @@ class DurableJobWorkerTest {
         doAnswer(call -> { call.<Runnable>getArgument(1).run(); return null; })
                 .when(settings).withTaskConfig(any(), any());
         DurableJobWorker worker = new DurableJobWorker(store, queue, settings, projects,
-                mock(CorpusIndexer.class), mock(DailyPlanService.class));
+                mock(CorpusIndexer.class), mock(DailyPlanService.class),
+                new AsyncJobTelemetry(new SimpleMeterRegistry(), ObservationRegistry.create(), store));
         try {
             worker.poll();
             verify(projects, timeout(3000)).runJob(19L, 7L);
