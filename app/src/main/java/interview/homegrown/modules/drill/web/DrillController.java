@@ -1,5 +1,13 @@
 package interview.homegrown.modules.drill.web;
 
+import interview.homegrown.modules.studyplan.domain.DailyTask;
+
+import interview.homegrown.modules.studyplan.dto.DailyTaskView;
+
+import interview.homegrown.modules.studyplan.service.DailyPlanService;
+
+import interview.homegrown.modules.corpus.service.CorpusService;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.common.web.SseStream;
