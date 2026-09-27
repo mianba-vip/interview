@@ -1,0 +1,10 @@
+apiVersion: 1
+providers:
+  - name: Mianba
+    orgId: 1
+    folder: Mianba
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards/json

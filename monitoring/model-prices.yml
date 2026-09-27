@@ -1,0 +1,12 @@
+# Optional operator-maintained USD prices per million input/output tokens.
+# Keep unknown models absent: an absent price means no cost estimate, not zero cost.
+# Example (verify current provider prices before enabling):
+# app:
+#   observability:
+#     model-prices:
+#       example-model:
+#         input-usd-per-million: 1.0
+#         output-usd-per-million: 2.0
+app:
+  observability:
+    model-prices: {}

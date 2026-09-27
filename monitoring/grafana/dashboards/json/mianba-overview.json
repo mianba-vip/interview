@@ -1,0 +1,95 @@
+{
+  "uid": "mianba-observability",
+  "title": "面霸 · 服务与 AI 观测",
+  "description": "HTTP、模型、异步任务与关联日志；费用仅统计已配置价格且供应商返回用量的调用。",
+  "tags": ["mianba", "ai", "operations"],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "HTTP 请求/分钟", "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(rate(http_server_requests_seconds_count{job=\"mianba-backend\"}[5m])) * 60"}],
+      "fieldConfig": {"defaults": {"unit": "reqpm"}}, "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 2, "type": "stat", "title": "HTTP 5xx 比例", "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(rate(http_server_requests_seconds_count{job=\"mianba-backend\",status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count{job=\"mianba-backend\"}[5m])), 0.000001)"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "red", "value": 0.03}]}}},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 3, "type": "stat", "title": "AI 调用失败率", "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(rate(mianba_ai_call_seconds_count{outcome=\"error\"}[5m])) / clamp_min(sum(rate(mianba_ai_call_seconds_count[5m])), 0.000001)"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit"}}, "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 4, "type": "stat", "title": "模型费用估算 USD", "description": "无价格配置或供应商未返回 usage 时不会计入。", "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(mianba_ai_estimated_cost_usd_total)"}],
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}}, "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "HTTP P95 耗时", "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (le, uri) (rate(http_server_requests_seconds_bucket{job=\"mianba-backend\"}[5m])))", "legendFormat": "{{uri}}"}],
+      "fieldConfig": {"defaults": {"unit": "s"}}, "options": {"legend": {"displayMode": "table", "placement": "bottom"}}
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "AI 调用 P95 耗时", "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"refId": "A", "expr": "histogram_quantile(0.95, sum by (le, provider, model) (rate(mianba_ai_call_seconds_bucket[5m])))", "legendFormat": "原生/结构化 {{provider}} / {{model}}"},
+        {"refId": "B", "expr": "histogram_quantile(0.95, sum by (le, gen_ai_system, gen_ai_request_model) (rate(gen_ai_client_operation_seconds_bucket[5m])))", "legendFormat": "Spring AI {{gen_ai_system}} / {{gen_ai_request_model}}"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}}, "options": {"legend": {"displayMode": "table", "placement": "bottom"}}
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "流式首字 P95", "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (le, provider, model) (rate(mianba_ai_first_content_seconds_bucket[5m])))", "legendFormat": "{{provider}} / {{model}}"}],
+      "fieldConfig": {"defaults": {"unit": "s"}}, "options": {"legend": {"displayMode": "table", "placement": "bottom"}}
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Token 使用速率", "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"refId": "A", "expr": "sum by (provider, model, type) (rate(mianba_ai_tokens_total[5m])) * 60", "legendFormat": "原生/结构化 {{provider}} / {{model}} / {{type}}"},
+        {"refId": "B", "expr": "sum by (gen_ai_system, gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_total{gen_ai_token_type!~\"total\"}[5m])) * 60", "legendFormat": "Spring AI {{gen_ai_system}} / {{gen_ai_request_model}} / {{gen_ai_token_type}}"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}}, "options": {"legend": {"displayMode": "table", "placement": "bottom"}}
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "异步任务状态", "gridPos": {"x": 0, "y": 20, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "mianba_async_jobs{job=\"mianba-backend\"}", "legendFormat": "{{status}}"}],
+      "fieldConfig": {"defaults": {"unit": "short"}}, "options": {"legend": {"displayMode": "table", "placement": "bottom"}}
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "AI 与任务重试/分钟", "gridPos": {"x": 12, "y": 20, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"refId": "A", "expr": "sum by (reason) (rate(mianba_ai_retries_total[5m])) * 60", "legendFormat": "AI {{reason}}"},
+        {"refId": "B", "expr": "sum by (type) (rate(mianba_async_retries_total[5m])) * 60", "legendFormat": "任务 {{type}}"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}}, "options": {"legend": {"displayMode": "table", "placement": "bottom"}}
+    },
+    {
+      "id": 11, "type": "logs", "title": "最近后端日志 · 可按 requestId / taskId / sessionId / traceId 筛选", "gridPos": {"x": 0, "y": 28, "w": 24, "h": 9},
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [{"refId": "A", "expr": "{job=\"mianba-backend\"}"}],
+      "options": {"showTime": true, "wrapLogMessage": true, "sortOrder": "Descending"}
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "应用层错误/分钟（含 HTTP 200 的业务错误）", "gridPos": {"x": 0, "y": 37, "w": 24, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by (kind) (rate(mianba_api_errors_total[5m])) * 60", "legendFormat": "{{kind}}"}],
+      "fieldConfig": {"defaults": {"unit": "short"}}, "options": {"legend": {"displayMode": "table", "placement": "bottom"}}
+    }
+  ]
+}

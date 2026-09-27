@@ -8,6 +8,19 @@ set -Eeuo pipefail
 DEPLOY_DIR="${DEPLOY_DIR:-/opt/mianba}"
 # 仓库里的生产 compose 文件名（GitHub Actions 部署时显式传 COMPOSE_FILE，这里仅兜底）
 COMPOSE_FILE="${COMPOSE_FILE:-$DEPLOY_DIR/docker-compose.prod.yml}"
+OBSERVABILITY_FILE="$DEPLOY_DIR/docker-compose.monitoring.yml"
+ENABLE_OBSERVABILITY="${ENABLE_OBSERVABILITY:-auto}"
+if [[ "$ENABLE_OBSERVABILITY" == "auto" ]]; then
+  if [[ -f "$DEPLOY_DIR/.observability-enabled" ]]; then
+    ENABLE_OBSERVABILITY=true
+  else
+    ENABLE_OBSERVABILITY=false
+  fi
+fi
+if [[ "$ENABLE_OBSERVABILITY" == "true" && ! -f "$OBSERVABILITY_FILE" ]]; then
+  echo "ERROR: 监控 Compose 不存在：$OBSERVABILITY_FILE" >&2
+  exit 1
+fi
 BACKUP_DIR="${BACKUP_DIR:-$DEPLOY_DIR/backups}"
 SKIP_BACKUP="${SKIP_BACKUP:-false}"
 backup_tmp=""
@@ -22,10 +35,15 @@ trap cleanup_backup_tmp EXIT
 
 cd "$DEPLOY_DIR"
 
+COMPOSE_ARGS=(-f "$COMPOSE_FILE")
+if [[ "$ENABLE_OBSERVABILITY" == "true" ]]; then
+  COMPOSE_ARGS+=(-f "$OBSERVABILITY_FILE")
+fi
+
 if docker compose version >/dev/null 2>&1; then
-  COMPOSE=(docker compose -f "$COMPOSE_FILE")
+  COMPOSE=(docker compose "${COMPOSE_ARGS[@]}")
 elif docker-compose version >/dev/null 2>&1; then
-  COMPOSE=(docker-compose -f "$COMPOSE_FILE")
+  COMPOSE=(docker-compose "${COMPOSE_ARGS[@]}")
 else
   echo "ERROR: docker compose/docker-compose is not installed" >&2
   exit 1
@@ -45,6 +63,15 @@ IMAGES=(
   "minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
   "minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"
 )
+if [[ "$ENABLE_OBSERVABILITY" == "true" ]]; then
+  IMAGES+=(
+    "prom/prometheus:v3.5.0"
+    "grafana/tempo:2.8.3"
+    "grafana/loki:3.7.0"
+    "grafana/alloy:v1.10.2"
+    "grafana/grafana:12.2.0"
+  )
+fi
 
 ensure_image() {
   local image="$1"
@@ -107,7 +134,11 @@ echo "[build] backend web (local cache enabled)"
 # --no-build prevents Compose from triggering an implicit rebuild. Compose uses
 # already-present immutable infrastructure images and the two images built above.
 echo "[up] postgres redis minio backend web"
-"${COMPOSE[@]}" up -d --no-build postgres redis minio backend web
+SERVICES=(postgres redis minio backend web)
+if [[ "$ENABLE_OBSERVABILITY" == "true" ]]; then
+  SERVICES+=(prometheus tempo loki alloy grafana)
+fi
+"${COMPOSE[@]}" up -d --no-build "${SERVICES[@]}"
 
 # Idempotently create the MinIO bucket. Exit 0 is expected for this one-shot job.
 "${COMPOSE[@]}" up --no-build --no-deps minio-init
@@ -132,13 +163,24 @@ wait_healthy redis
 wait_healthy minio
 
 for ((i=1; i<=60; i++)); do
-  curl -fsS http://127.0.0.1:23333/actuator/health >/dev/null 2>&1 && break
+  curl -fsS http://127.0.0.1:23333/healthz >/dev/null 2>&1 && break
   sleep 2
 done
-curl -fsS http://127.0.0.1:23333/actuator/health >/dev/null
+curl -fsS http://127.0.0.1:23333/healthz >/dev/null
 curl -fsS \
   -H "Host: mianba.vip" \
   http://127.0.0.1:18080/actuator/health >/dev/null
+
+if [[ "$ENABLE_OBSERVABILITY" == "true" ]]; then
+  curl -fsS http://127.0.0.1:23334/actuator/prometheus | grep -F 'mianba_async_jobs' >/dev/null
+  for ((i=1; i<=30; i++)); do
+    curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1 && break
+    sleep 2
+  done
+  curl -fsS http://127.0.0.1:3000/api/health >/dev/null
+  touch "$DEPLOY_DIR/.observability-enabled"
+  echo "[observability] Grafana available through SSH tunnel on localhost:3000"
+fi
 
 "${COMPOSE[@]}" ps
 echo "DEPLOY_OK"

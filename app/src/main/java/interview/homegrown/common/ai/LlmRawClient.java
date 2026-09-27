@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.common.config.AiConfigProperties;
 import interview.homegrown.common.exception.BusinessException;
 import interview.homegrown.common.exception.ErrorCode;
+import interview.homegrown.common.observability.AiTelemetry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -48,10 +49,12 @@ public class LlmRawClient {
 
     private final HttpClient httpClient;
     private final AiSettingsService settings;
+    private final AiTelemetry telemetry;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public LlmRawClient(AiSettingsService settings) {
+    public LlmRawClient(AiSettingsService settings, AiTelemetry telemetry) {
         this.settings = settings;
+        this.telemetry = telemetry;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -238,27 +241,39 @@ public class LlmRawClient {
             notifyError(onError, new IllegalStateException("尚未配置 API Key，请到「设置」页填写后再试"));
             return;
         }
-        boolean thinking = enableThinking;
-        for (int attempt = 0; attempt < 2; attempt++) {
-            try {
-                Map<String, Object> body = buildStreamBody(system, user, images, thinking);
-                HttpResponse<InputStream> response = sendStreamWithRetry(body, onError);
-                if (response == null) return;
-                if (response.statusCode() / 100 != 2) {
-                    response.body().close();
-                    notifyError(onError, new BusinessException(ErrorCode.SERVICE_UNAVAILABLE,
-                            "LLM stream HTTP " + response.statusCode()));
+        AiConfig current = cfg();
+        AiTelemetry.Call call = telemetry.start(current.provider(), current.model(), "stream");
+        boolean success = false;
+        try {
+            boolean thinking = enableThinking;
+            for (int attempt = 0; attempt < 2; attempt++) {
+                try {
+                    Map<String, Object> body = buildStreamBody(system, user, images, thinking);
+                    HttpResponse<InputStream> response = sendStreamWithRetry(body, onError);
+                    if (response == null) return;
+                    if (response.statusCode() / 100 != 2) {
+                        response.body().close();
+                        notifyError(onError, new BusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                                "LLM stream HTTP " + response.statusCode()));
+                        return;
+                    }
+                    boolean thinkingTimeout = readStreamLoop(response, onToken, onError,
+                            fallbackToReasoning, onReasoning, call);
+                    if (!thinkingTimeout) {
+                        success = true;
+                        return;
+                    }
+                    log.info("思考超过 {}s，降级为非思考模式重试", MAX_THINKING_SECONDS);
+                    telemetry.retry("thinking_timeout");
+                    thinking = false;
+                } catch (Exception t) {
+                    if (t instanceof InterruptedException) Thread.currentThread().interrupt();
+                    notifyError(onError, t);
                     return;
                 }
-                boolean thinkingTimeout = readStreamLoop(response, onToken, onError, fallbackToReasoning, onReasoning);
-                if (!thinkingTimeout) return;
-                log.info("思考超过 {}s，降级为非思考模式重试", MAX_THINKING_SECONDS);
-                thinking = false;
-            } catch (Exception t) {
-                if (t instanceof InterruptedException) Thread.currentThread().interrupt();
-                notifyError(onError, t);
-                return;
             }
+        } finally {
+            call.finish(success);
         }
     }
 
@@ -288,13 +303,17 @@ public class LlmRawClient {
             applyThinkingDiscard(body);
         }
         body.put("stream", true);
+        // OpenAI-compatible providers may include final usage; the existing optional-parameter retry
+        // removes this field automatically for providers that reject it.
+        body.put("stream_options", Map.of("include_usage", true));
         return body;
     }
 
     /** 读取 SSE 流并分发 token。返回 true 表示思考超时需要降级重试。 */
     private boolean readStreamLoop(HttpResponse<InputStream> response,
                                    Consumer<String> onToken, Consumer<Throwable> onError,
-                                   boolean fallbackToReasoning, Consumer<String> onReasoning) throws Exception {
+                                   boolean fallbackToReasoning, Consumer<String> onReasoning,
+                                   AiTelemetry.Call call) throws Exception {
         long firstTokenAt = -1;
         boolean hasContent = false;
         try (BufferedReader reader = new BufferedReader(
@@ -309,6 +328,7 @@ public class LlmRawClient {
                 if (payload.isEmpty()) continue;
                 try {
                     JsonNode node = objectMapper.readTree(payload);
+                    call.usage(node.path("usage"));
                     JsonNode choice = node.path("choices").path(0);
                     if (textOrNull(choice.path("finish_reason")) != null) completed = true;
                     JsonNode delta = choice.path("delta");
@@ -323,6 +343,7 @@ public class LlmRawClient {
                     if (text == null && fallbackToReasoning) text = reasoning;
                     if (text != null && !text.isEmpty()) {
                         hasContent = true;
+                        call.firstContent();
                         if (onToken != null) onToken.accept(text);
                     }
                     if (!hasContent && firstTokenAt > 0
@@ -370,19 +391,32 @@ public class LlmRawClient {
 
     /** 同步 POST 到指定 URL（自定义超时），返回响应体字符串。非 2xx 抛异常。 */
     private String postTo(String url, Map<String, Object> body, int timeoutSeconds) throws Exception {
-        String json = objectMapper.writeValueAsString(body);
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Authorization", "Bearer " + cfg().apiKey())
-                .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
-                .POST(HttpRequest.BodyPublishers.ofString(json))
-                .timeout(Duration.ofSeconds(timeoutSeconds))
-                .build();
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() / 100 != 2) {
-            throw new RuntimeException("LLM HTTP " + response.statusCode() + ": " + response.body());
+        AiConfig current = cfg();
+        AiTelemetry.Call call = telemetry.start(current.provider(), current.model(), "sync");
+        boolean success = false;
+        try {
+            String json = objectMapper.writeValueAsString(body);
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("Authorization", "Bearer " + cfg().apiKey())
+                    .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                    .POST(HttpRequest.BodyPublishers.ofString(json))
+                    .timeout(Duration.ofSeconds(timeoutSeconds))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() / 100 != 2) {
+                throw new RuntimeException("LLM HTTP " + response.statusCode() + ": " + response.body());
+            }
+            try {
+                call.usage(objectMapper.readTree(response.body()).path("usage"));
+            } catch (JsonProcessingException ignored) {
+                // A malformed provider response is handled by the existing caller; metrics must not change behavior.
+            }
+            success = true;
+            return response.body();
+        } finally {
+            call.finish(success);
         }
-        return response.body();
     }
 
     // ============================================================
@@ -508,6 +542,7 @@ public class LlmRawClient {
             if (e.getMessage() != null && e.getMessage().startsWith("LLM HTTP 400")
                     && hasOptionalParams(body)) {
                 log.info("complete HTTP 400（可能不认识可选参数），去掉可选参数后重试: {}", e.getMessage());
+                telemetry.retry("unsupported_parameter");
                 return postTo(endpoint(), stripOptionalParams(body), 60);
             }
             throw e;
@@ -525,6 +560,7 @@ public class LlmRawClient {
                 if (response.statusCode() == 400 && attempt == 0 && hasOptionalParams(reqBody)) {
                     response.body().close();
                     log.info("stream HTTP 400（可能不认识可选参数），去掉可选参数后重试");
+                    telemetry.retry("unsupported_parameter");
                     reqBody = stripOptionalParams(reqBody);
                     continue;
                 }
@@ -540,6 +576,7 @@ public class LlmRawClient {
                 }
                 if (attempt == 0 && hasOptionalParams(reqBody)) {
                     log.info("stream IO 异常（{}），去掉可选参数后重试", t.getMessage());
+                    telemetry.retry("stream_io");
                     reqBody = stripOptionalParams(reqBody);
                     continue;
                 }

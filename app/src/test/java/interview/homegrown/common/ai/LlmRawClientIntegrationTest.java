@@ -3,6 +3,10 @@ package interview.homegrown.common.ai;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.common.config.AiConfigProperties;
+import interview.homegrown.common.observability.AiTelemetry;
+import interview.homegrown.common.observability.ObservabilityProperties;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.observation.ObservationRegistry;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -48,7 +52,8 @@ class LlmRawClientIntegrationTest {
                         env.getOrDefault("MODEL_NAME", "deepseek-v4-flash"), 0.7, "low");
             }
         };
-        client = new LlmRawClient(settings);
+        client = new LlmRawClient(settings, new AiTelemetry(new SimpleMeterRegistry(),
+                ObservationRegistry.create(), new ObservabilityProperties()));
     }
 
     @Test

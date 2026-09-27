@@ -2,6 +2,8 @@ package interview.homegrown.common.exception;
 
 
 import interview.homegrown.common.result.Result;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -17,6 +19,11 @@ import org.springframework.web.server.ResponseStatusException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private final MeterRegistry meters;
+
+    public GlobalExceptionHandler(MeterRegistry meters) {
+        this.meters = meters;
+    }
 
     // SSE 端点（produces=text/event-stream）的响应 content-type 会被预设成 event-stream，
     // 直接返回 Result 会因找不到对应转换器而渲染失败（客户端拿不到任何响应 → 挂到网关
@@ -25,18 +32,21 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<Result<Void>> handleBusinessException(BusinessException e) {
+        error("business");
         log.warn("业务异常：code={}, message={}", e.getErrorCode().getCode(), e.getMessage());
         return json(HttpStatus.OK, e.getErrorCode().getCode(), e.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Result<Void>> handleIllegalArgument(IllegalArgumentException e) {
+        error("bad_request");
         log.warn("参数异常: {}", e.getMessage());
         return json(HttpStatus.BAD_REQUEST, ErrorCode.BAD_REQUEST.getCode(), e.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Result<Void>> handleValidation(MethodArgumentNotValidException e) {
+        error("validation");
         String msg = e.getBindingResult().getFieldErrors().stream()
                 .findFirst()
                 .map(fe -> fe.getDefaultMessage() == null ? fe.getField() : fe.getDefaultMessage())
@@ -49,6 +59,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Result<Void>> handleResponseStatusException(ResponseStatusException e) {
         HttpStatusCode status = e.getStatusCode();
         int code = status instanceof HttpStatus hs ? hs.value() : status.value();
+        error(code >= 500 ? "server" : "http_status");
         String reason = e.getReason() != null ? e.getReason() : "请求处理异常";
         if (code >= 500) {
             log.error("HTTP 状态异常：status={}, reason={}", code, reason, e);
@@ -61,6 +72,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<Result<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+        error("method_not_allowed");
         log.warn("接口不支持请求方法：method={}, supported={}", e.getMethod(), e.getSupportedHttpMethods());
         var response = ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).contentType(MediaType.APPLICATION_JSON);
         if (e.getSupportedHttpMethods() != null) response.headers(headers -> headers.setAllow(e.getSupportedHttpMethods()));
@@ -69,10 +81,15 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Result<Void>> handleException(Exception e) {
+        error("server");
         log.error("未预期异常", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(Result.error(ErrorCode.INTERNAL_ERROR));
+    }
+
+    private void error(String kind) {
+        Counter.builder("mianba.api.errors").tag("kind", kind).register(meters).increment();
     }
 
     private static ResponseEntity<Result<Void>> json(HttpStatus status, int code, String message) {

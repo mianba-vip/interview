@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -118,6 +119,14 @@ public class DurableJobStore {
                 """, (rs, row) -> new JobStatus(rs.getLong("id"), rs.getString("job_type"),
                 rs.getLong("entity_id"), rs.getString("status"), rs.getInt("attempts"),
                 rs.getInt("max_attempts"), rs.getString("last_error")), userId);
+    }
+
+    public Map<String, Long> countByStatus() {
+        return jdbc.query("SELECT status, count(*) FROM async_job GROUP BY status", rs -> {
+            Map<String, Long> counts = new java.util.HashMap<>();
+            while (rs.next()) counts.put(rs.getString(1), rs.getLong(2));
+            return counts;
+        });
     }
 
     public boolean retryDead(Long jobId, Long userId) {

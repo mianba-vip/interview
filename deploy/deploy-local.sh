@@ -14,6 +14,7 @@
 #   SSH_USER   SSH 用户名               默认 root
 #   SSH_KEY    SSH 私钥路径             默认 ~/.ssh/id_ed25519
 #   DEPLOY_DIR 服务器部署目录           默认 /opt/mianba
+#   ENABLE_OBSERVABILITY 首次启用监控时设 true；之后由服务器标记自动沿用
 #
 # 流程：预检 SSH → gradle 构建 jar → vite 构建 web（相对 API）→
 #       scp/tar 上传产物 → 服务器跑 deploy-prod.sh（先备份 PG，
@@ -36,6 +37,11 @@ if [ -z "${SSH_KEY:-}" ]; then
 fi
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_rsa}"
 DEPLOY_DIR="${DEPLOY_DIR:-/opt/mianba}"
+ENABLE_OBSERVABILITY="${ENABLE_OBSERVABILITY:-auto}"
+[[ "$ENABLE_OBSERVABILITY" =~ ^(auto|true|false)$ ]] || {
+  echo "❌ ENABLE_OBSERVABILITY 只能是 auto、true 或 false" >&2
+  exit 1
+}
 JAR="app/build/libs/app-0.0.1-SNAPSHOT.jar"
 
 step() { echo; echo "==> $1"; }
@@ -97,6 +103,7 @@ stream_tree() {
 upload_tree() {
   local local_dir="$1"
   local remote_target="$2"
+  local expected_file="${3:-index.html}"
   local remote_parent="${remote_target%/*}"
   local remote_name="${remote_target##*/}"
   local remote_stage="$remote_parent/.${remote_name}.uploading"
@@ -108,11 +115,11 @@ upload_tree() {
   # 如果服务器已完成切换但 SSH 回执丢失，重试只校验正式目录，不会再移走它。
   retry "切换 Web 目录" "${SSH[@]}" "$REMOTE" \
     "set -e; if [ -d '$remote_stage' ]; then \
-       test -f '$remote_stage/index.html'; \
+       test -f '$remote_stage/$expected_file'; \
        rm -rf -- '$remote_previous'; \
        if [ -e '$remote_target' ]; then mv '$remote_target' '$remote_previous'; fi; \
        mv '$remote_stage' '$remote_target'; \
-     fi; test -f '$remote_target/index.html'"
+     fi; test -f '$remote_target/$expected_file'"
 }
 
 # ---------- 0/5 预检 ----------
@@ -200,6 +207,13 @@ retry "切换后端 jar" "${SSH[@]}" "$REMOTE" \
 echo "   ✓ backend/app.jar"
 upload_tree "$WEB_UPLOAD_SOURCE" "$WEB_UPLOAD_TARGET"
 echo "   ✓ $WEB_UPLOAD_TARGET"
+upload_tree "$ROOT/monitoring" "$DEPLOY_DIR/monitoring" "prometheus.yml"
+echo "   ✓ monitoring/"
+retry "上传监控 Compose" "${SCP[@]}" docker-compose.monitoring.yml \
+  "$REMOTE:$DEPLOY_DIR/docker-compose.monitoring.yml.uploading"
+retry "切换监控 Compose" "${SSH[@]}" "$REMOTE" \
+  "set -e; mv -f '$DEPLOY_DIR/docker-compose.monitoring.yml.uploading' '$DEPLOY_DIR/docker-compose.monitoring.yml'"
+echo "   ✓ docker-compose.monitoring.yml（首次启用需 ENABLE_OBSERVABILITY=true）"
 retry "上传 nginx.conf" "${SCP[@]}" deploy/nginx.conf "$REMOTE:$DEPLOY_DIR/web-image/nginx.conf.uploading"
 retry "切换 nginx.conf" "${SSH[@]}" "$REMOTE" \
   "set -e; if [ -f '$DEPLOY_DIR/web-image/nginx.conf.uploading' ]; then \
@@ -217,13 +231,13 @@ echo "   ✓ deploy-prod.sh"
 step "4/5 服务器执行部署（PG 备份 → docker 构建/重启 → 健康检查，约 1~3 分钟）"
 "$SSH_BIN" -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
     -o ServerAliveInterval=30 -p "$SSH_PORT" "$REMOTE" \
-  "export DEPLOY_DIR='$DEPLOY_DIR' COMPOSE_FILE='$DEPLOY_DIR/docker-compose.yml'; \
+  "export DEPLOY_DIR='$DEPLOY_DIR' COMPOSE_FILE='$DEPLOY_DIR/docker-compose.yml' ENABLE_OBSERVABILITY='$ENABLE_OBSERVABILITY'; \
    chmod +x '$DEPLOY_DIR/deploy-prod.sh'; bash '$DEPLOY_DIR/deploy-prod.sh'"
 
 # ---------- 5/5 健康检查 ----------
-step "5/5 复核后端健康（http://$SSH_HOST:23333/actuator/health）"
+step "5/5 复核后端健康（http://$SSH_HOST:23333/healthz）"
 sleep 3
-HEALTH="$(curl -s --max-time 20 "http://$SSH_HOST:23333/actuator/health" 2>/dev/null || true)"
+HEALTH="$(curl -s --max-time 20 "http://$SSH_HOST:23333/healthz" 2>/dev/null || true)"
 if echo "$HEALTH" | grep -q '"status":"UP"'; then
   echo "✅ 部署成功，服务器后端健康：$HEALTH"
 else

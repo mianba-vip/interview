@@ -2,6 +2,7 @@ package interview.homegrown.common.async;
 
 import interview.homegrown.common.ai.AiConfig;
 import interview.homegrown.common.ai.AiSettingsService;
+import interview.homegrown.common.observability.AsyncJobTelemetry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -21,7 +22,7 @@ class DurableJobQueueTest {
         when(settings.currentProviderForRequest()).thenReturn(desktop);
         when(settings.userConfig(7L)).thenReturn(empty);
 
-        DurableJobQueue queue = new DurableJobQueue(store, settings);
+        DurableJobQueue queue = new DurableJobQueue(store, settings, mock(AsyncJobTelemetry.class));
         queue.enqueue(DurableJobType.PROJECT_ANALYSIS, 19L, 7L, false, false);
 
         verify(store).enqueue(DurableJobType.PROJECT_ANALYSIS, 19L, 7L, false, false);

@@ -182,13 +182,24 @@ interview:
 
 
 management:
+  server:
+    # 生产环境设为 23334，仅在 Compose 内网提供管理端点；桌面端保持原有健康检查端口。
+    port: ${APP_MANAGEMENT_PORT:23333}
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: ${APP_MANAGEMENT_EXPOSURE:health,info}
+  tracing:
+    enabled: ${APP_TRACING_ENABLED:false}
+    sampling:
+      probability: ${APP_TRACE_SAMPLING:0.1}
   endpoint:
     health:
-      show-details: always
+      show-details: ${APP_HEALTH_DETAILS:never}
+      group:
+        public:
+          include: "*"
+          additional-path: server:/healthz
   health:
     mail:
       # 不配邮箱时 JavaMailSender 连不上 → mail 指示器 DOWN → 整体 health 变 DOWN，
