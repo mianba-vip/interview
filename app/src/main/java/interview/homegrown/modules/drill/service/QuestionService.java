@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.common.exception.BusinessException;
 import interview.homegrown.common.exception.ErrorCode;
 import interview.homegrown.modules.drill.ai.GeneratedQuestion;
+import interview.homegrown.modules.drill.ai.McqOption;
 import interview.homegrown.modules.drill.ai.QuestionGenerator;
 import interview.homegrown.modules.drill.domain.AnswerMode;
 import interview.homegrown.modules.drill.domain.ProbeType;
@@ -80,8 +81,6 @@ public class QuestionService {
                     .limit(HISTORY_LIMIT)
                     .forEach(history::add);
         }
-        ResponseFormat format = ResponseFormat.FREE_TEXT;   // MVP 主路径，CHOICE 走摸底链路
-
         List<ProbeType> tried = new ArrayList<>();
         GeneratedQuestion accepted = null;
         ProbeType acceptedProbe = null;
@@ -89,6 +88,9 @@ public class QuestionService {
         for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             ProbeType probe = pickProbeType(arity, usedProbes, tried);
             tried.add(probe);
+            // 作答形态按认知动作分流：识别/补全/对比/倒推/找 bug 出选择题（用户输入字母作答、判分免 LLM）；
+            // 场景设计与端到端设计保留文本作答。
+            ResponseFormat format = CHOICE_PROBES.contains(probe) ? ResponseFormat.CHOICE : ResponseFormat.FREE_TEXT;
 
             GeneratedQuestion gq = generator.generate(task, probe, format, history, referenceText);
             if (gq == null || gq.stem == null || gq.stem.isBlank()) {
@@ -96,6 +98,14 @@ public class QuestionService {
                 log.warn("出题结果缺少顶层 stem，带错重试 attempt={} probe={}", attempt + 1, probe);
                 referenceText = (referenceText == null ? "" : referenceText + "\n\n")
                         + "上一次输出缺少顶层 stem：JSON 顶层必须同时包含 stem（完整题干）、points、byConcept。";
+                continue;
+            }
+            if (format == ResponseFormat.CHOICE && !validChoice(gq)) {
+                // 选择题结构坏（选项数/正确项/题干缺字母行）会把判分变成全 MISS——带错重试而非落库
+                log.warn("选择题结构不合法，带错重试 attempt={} probe={}", attempt + 1, probe);
+                referenceText = (referenceText == null ? "" : referenceText + "\n\n")
+                        + "上一次选择题结构不合法：options 必须恰好 4 项、key 为 A/B/C/D、有且只有 1 个 correct=true，"
+                        + "且 stem 内必须出现 A./B./C./D. 四个选项行（与 options 逐字一致）。";
                 continue;
             }
             double sim = similarityGuard.maxSimilarity(gq.stem, history);
@@ -117,7 +127,28 @@ public class QuestionService {
         if (accepted == null || accepted.stem == null || accepted.stem.isBlank()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "出题失败：模型未返回有效题干，请重试");
         }
-        return persist(task, accepted, acceptedProbe, format);
+        ResponseFormat fmt = CHOICE_PROBES.contains(acceptedProbe) ? ResponseFormat.CHOICE : ResponseFormat.FREE_TEXT;
+        if (fmt == ResponseFormat.CHOICE && !validChoice(accepted)) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "选择题结构不合法，请重试");
+        }
+        return persist(task, accepted, acceptedProbe, fmt);
+    }
+
+    /** 出选择题的认知动作：概念识别/补全/对比/倒推/找 bug——选项可客观判定；设计类保留文本作答。 */
+    private static final java.util.Set<ProbeType> CHOICE_PROBES = java.util.Set.of(
+            ProbeType.RECALL, ProbeType.CLOZE, ProbeType.CONTRAST, ProbeType.REVERSE, ProbeType.TRAP);
+
+    /** 选择题结构硬校验：4 项、唯一正确、key 各异且题干内嵌对应选项行（不满足则带错重试）。 */
+    private static boolean validChoice(GeneratedQuestion gq) {
+        if (gq == null || gq.options == null || gq.options.size() != 4) return false;
+        if (gq.options.stream().filter(McqOption::correct).count() != 1) return false;
+        java.util.Set<String> keys = new java.util.HashSet<>();
+        for (McqOption o : gq.options) {
+            if (o.key() == null || o.text() == null || o.text().isBlank()) return false;
+            if (!keys.add(o.key())) return false;
+            if (!gq.stem.contains(o.key() + ".")) return false;
+        }
+        return true;
     }
 
     /**
@@ -150,6 +181,7 @@ public class QuestionService {
         qb.setArity(task.arity());
         qb.setStem(gq.stem);
         qb.setPointsJson(serialize(gq));
+        qb.setMcqOptionsJson(format == ResponseFormat.CHOICE && gq.options != null ? serialize(gq.options) : null);
         return qbRepo.save(qb);
     }
 

@@ -31,11 +31,58 @@ public class QuestionGenerator {
     public record Prompt(String system, String user) {
     }
 
+    /** 选择题作答：题干内嵌 A-D 选项 + options 供 GraderMcq 精确判分；用户输入字母作答。 */
+    private static final String CHOICE_FORMAT_SPEC = """
+                【JSON 格式 · 选择题】
+                结构必须是（stem 顶层唯一，落库依赖；options 供判分）：
+                ```json
+                {
+                  "stem": "…（其中另起四行写 A. …／B. …／C. …／D. … 四个选项，并附一句：请直接回复所选选项的字母）",
+                  "points": [{"text": "评分维度短语", "weight": 2}],
+                  "options": [
+                    {"key": "A", "text": "选项文本", "correct": false},
+                    {"key": "B", "text": "选项文本", "correct": true},
+                    {"key": "C", "text": "选项文本", "correct": false},
+                    {"key": "D", "text": "选项文本", "correct": false}
+                  ],
+                  "byConcept": [{"conceptIndex": 1, "points": [{"text": "评分维度短语", "weight": 2}]}]
+                }
+                ```
+                - 恰好 4 个 options、有且只有 1 个 correct=true、key 为 A/B/C/D；stem 内嵌的选项行与 options 逐字一致。
+                - 干扰项必须是常见误解或似是而非的表述，不能荒谬凑数；四项长度句式相当；单项选择，不设“以上皆是/以上皆非”。
+                - 正确项出现的位置要随机，不要总放在第一个。
+                实际输出不要用 Markdown 围栏包裹整个 JSON，不要输出结构以外的任何文字。
+                """;
+
+    /** FREE_TEXT 作答：题干 + 评分点 + byConcept（顶层 stem 落库依赖）。 */
+    private static final String FREE_TEXT_FORMAT_SPEC = """
+                【JSON 格式】
+                结构必须是（stem 是整道题唯一的题干，必须放在顶层，落库依赖该字段）：
+                ```json
+                {
+                  "stem": "整道题的题干（Markdown 字符串，覆盖概念清单里全部概念）",
+                  "points": [{"text": "评分维度短语", "weight": 2}],
+                  "byConcept": [
+                    {
+                      "conceptIndex": 1,
+                      "points": [
+                        {"text": "评分维度短语", "weight": 2}
+                      ]
+                    }
+                  ]
+                }
+                ```
+                - stem 全题只有顶层这一份：byConcept 元素里不要放 stem（Java 侧无该字段，放了会被丢弃）。
+                - 顶层 points 放 PRIMARY 概念的评分点；byConcept 必须为每个 conceptIndex 各出一组评分点。
+                实际输出不要用 Markdown 围栏包裹整个 JSON，不要输出结构以外的任何文字。
+                
+                """;
+
     /** 组装出题 prompt（供流式出题复用，与同步 generate 完全一致）。
      *
      * @param contextText 学习上下文（学生进度 + 概念要点 + 用户资料块 + 互联网补充），可为 null
-     * @param format 作答判分维度（ResponseFormat）。当前恒为 FREE_TEXT，不注入出题 prompt；
-     *               出题形态由 {@link ProbeType#formHint()} 决定，故此处参数保留但不参与题干文本。
+     * @param format 作答判分维度：FREE_TEXT 走文本作答格式；CHOICE 走选择题格式
+     *               （题干内嵌 A-D 选项、用户输入字母作答、options 供 GraderMcq 精确判分）。
      */
     public Prompt prompt(SelectedTask task, ProbeType probeType, ResponseFormat format,
                          List<String> avoidStems, String contextText) {
@@ -82,26 +129,9 @@ public class QuestionGenerator {
                 【分组和序号】
                 必须按概念分组输出 byConcept。conceptIndex 使用本次任务提供的概念清单中的序号，禁止自造。若本次任务未提供概念清单，则 conceptIndex 使用 0。
                 
-                【JSON 格式】
-                结构必须是（stem 是整道题唯一的题干，必须放在顶层，落库依赖该字段）：
-                ```json
-                {
-                  "stem": "整道题的题干（Markdown 字符串，覆盖概念清单里全部概念）",
-                  "points": [{"text": "评分维度短语", "weight": 2}],
-                  "byConcept": [
-                    {
-                      "conceptIndex": 1,
-                      "points": [
-                        {"text": "评分维度短语", "weight": 2}
-                      ]
-                    }
-                  ]
-                }
-                ```
-                - stem 全题只有顶层这一份：byConcept 元素里不要放 stem（Java 侧无该字段，放了会被丢弃）。
-                - 顶层 points 放 PRIMARY 概念的评分点；byConcept 必须为每个 conceptIndex 各出一组评分点。
-                实际输出不要用 Markdown 围栏包裹整个 JSON，不要输出结构以外的任何文字。
-                
+                """
+                + (format == ResponseFormat.CHOICE ? CHOICE_FORMAT_SPEC : FREE_TEXT_FORMAT_SPEC)
+                + """
                 不要使用中文破折号。只产出题目与评分点，严禁给出答案、解析或提示。输出严格遵循上述 JSON 格式。""";
 
         String conceptList = renderConcepts(task.concepts());

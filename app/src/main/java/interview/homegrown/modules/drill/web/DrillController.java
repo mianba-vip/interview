@@ -361,8 +361,14 @@ public class DrillController {
             boolean preGraded = run.getStatus() == DrillRunStatus.READY
                     || run.getStatus() == DrillRunStatus.ANSWERING;
             // 按钮已揭示 → 不再判定（直接走 reveal 讲解）；否则每轮都让 AI 判定三态 + 用户意图
+            String judgeConv = support.buildConversationForJudge(allTurns);
+            if (q.getResponseFormat() == ResponseFormat.CHOICE) {
+                judgeConv = (judgeConv == null ? "" : judgeConv)
+                        + "\n（本题为选择题：题干内含 A-D 选项，学生直接回复选项字母即为完整作答。"
+                        + "按所选与正确选项的对错判 done/needs_guide：选错时引导思考「该选项为什么不对」，不要求逐评分点展开论述。）";
+            }
             final SocraticJudge judge = (buttonReveal || !preGraded) ? null : socraticJudge.judge(
-                    stem, pointsJson, support.buildConversationForJudge(allTurns));
+                    stem, pointsJson, judgeConv);
 
             // —— 答案揭示边界（“得到答案之前”的评分依据）——
             // 触发揭示：前端「看答案」按钮，或 AI 判定用户明确索要完整答案/放弃作答（wantsAnswerNow）。
