@@ -35,7 +35,7 @@ public class GraderMcq implements Grader {
         List<PointVerdict> results = new ArrayList<>();
         int hit = 0;
         for (var o : opts) {
-            boolean selected = chosen.contains(o.key());
+            boolean selected = chosen.contains(o.key()) || matchByText(rawAnswer, o);   // 兼容直接输入选项文本
             boolean ok = (o.correct() == selected);   // 该选的选了、不该选的没选 = 正确
             if (ok) hit++;
             results.add(new PointVerdict(o.key() + ":" + o.text(), ok ? "HIT" : "MISS", rawAnswer));
@@ -63,15 +63,28 @@ public class GraderMcq implements Grader {
         }
     }
 
-    // 用户所选：逗号/空格/分号/顿号分割，取字母键（A/B/C...）
+    // 用户所选：逗号/空格/分号/顿号分割；每段抽取 A-Z 字母键（容忍 “B.”“选B”“答案:B”“AC” 这类输入），
+    // 抽不出字母的段保留原样，交给 matchByText 按选项文本匹配。
     private Set<String> parseSelected(String raw) {
         Set<String> set = new HashSet<>();
         if (raw == null) return set;
         for (String part : raw.split("[,\\s;、]+")) {
             String t = part.trim().toUpperCase();
-            if (!t.isEmpty()) set.add(t);
+            if (t.isEmpty()) continue;
+            String letters = t.replaceAll("[^A-Z]", "");
+            if (!letters.isEmpty()) {
+                for (char c : letters.toCharArray()) set.add(String.valueOf(c));
+            } else {
+                set.add(t);
+            }
         }
         return set;
+    }
+
+    /** 用户直接粘贴/输入了选项原文：整段包含该选项文本（≥2 字）也视为选中。 */
+    private boolean matchByText(String raw, McqOption o) {
+        if (raw == null || o.text() == null || o.text().trim().length() < 2) return false;
+        return raw.trim().contains(o.text().trim());
     }
 
     private String serialize(Object o) {

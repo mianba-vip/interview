@@ -197,12 +197,24 @@ function MermaidDiagram({ source }: { source: string }) {
   useEffect(() => {
     let active = true;
     let renderId = '';
+    let retryTimer = 0;
+    let guardTimer = 0;
+    let settled = false;
     setSvg('');
     setFailed(false);
 
     // 聊天内容是逐 token 到达的。若立即绘图，半截的 flowchart/sequenceDiagram 会被 Mermaid
     // 当成语法错误；等内容短暂停止变化后再绘制，避免一次回复产生几十个失败 SVG。
-    const timer = window.setTimeout(() => {
+    const timer = window.setTimeout(() => draw(false), 450);
+
+    // 清洗：剥掉 AI 偶发裹在图源外层的 ``` 围栏与首尾杂行，只留图本体。
+    const clean = source
+      .trim()
+      .replace(/^```[a-zA-Z]*\s*\n/, '')
+      .replace(/\n?```\s*$/, '')
+      .trim();
+
+    function draw(isRetry: boolean) {
       import('mermaid').then(({ default: mermaid }) => {
         mermaid.initialize({
           startOnLoad: false,
@@ -213,20 +225,38 @@ function MermaidDiagram({ source }: { source: string }) {
           // 解析失败只抛异常给组件回退，不让 Mermaid 在 body 中绘制炸弹错误图。
           suppressErrorRendering: true,
         });
-        renderId = `mermaid-${reactId.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}`;
-        return mermaid.render(renderId, source);
+        renderId = `mermaid-${reactId.replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}${isRetry ? 'r' : ''}`;
+        return mermaid.render(renderId, clean);
       }).then(({ svg: rendered }) => {
+        settled = true;
         if (active) setSvg(rendered);
-      }).catch(() => {
-        if (active) setFailed(true);
+      }).catch((err) => {
+        console.warn('[mermaid] render failed' + (isRetry ? ' (after retry)' : ''), err);
+        if (!active) return;
+        // 一次性竞态（连续 source 变更打断、并发渲染排队超时）很常见：隔 1s 重试一次，仍失败才回退源码。
+        if (!isRetry) retryTimer = window.setTimeout(() => draw(true), 1000);
+        else {
+          settled = true;
+          setFailed(true);
+        }
       }).finally(() => {
         if (renderId) removeMermaidArtifacts(renderId);
       });
-    }, 450);
+    }
+
+    // 兜底：12s 仍未出图（动态导入卡死/渲染悬挂）→ 回退源码，避免永久停在“正在绘制…”。
+    guardTimer = window.setTimeout(() => {
+      if (active && !settled) {
+        settled = true;
+        setFailed(true);
+      }
+    }, 12000);
 
     return () => {
       active = false;
       window.clearTimeout(timer);
+      window.clearTimeout(retryTimer);
+      window.clearTimeout(guardTimer);
       if (renderId) removeMermaidArtifacts(renderId);
     };
   }, [reactId, source]);
