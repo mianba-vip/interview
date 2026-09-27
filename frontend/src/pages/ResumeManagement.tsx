@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -12,8 +12,10 @@ import {
 } from 'lucide-react';
 import { ApiError } from '../api/client';
 import { resumeApi, type ResumeDetail, type ResumeListItem } from '../api/interview';
+import { useAuth } from '../auth/AuthContext';
 import { Badge, Button, Card, Loading } from '../components/ui';
 import { useFileDrop } from '../lib/useFileDrop';
+import { getCachedResumeDetail, rememberResumeDetail, RESUMES_ONLY, useDashboardData } from '../lib/useDashboardData';
 import './ResumeManagement.css';
 
 function errorMessage(error: unknown): string {
@@ -56,20 +58,17 @@ function statusTone(status: string): 'good' | 'warn' | 'bad' | 'soft' {
 
 export function ResumeManagement() {
   const navigate = useNavigate();
+  const { userId } = useAuth();
+  const { data, failed, refresh } = useDashboardData(userId, RESUMES_ONLY);
+  const list = data.resumes;
+  const listFailed = failed.includes('resumes');
   const fileRef = useRef<HTMLInputElement>(null);
-  const [list, setList] = useState<ResumeListItem[] | null>(null);
   const [selected, setSelected] = useState<ResumeDetail | null>(null);
   const [loadingDetailId, setLoadingDetailId] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const uploadBusy = useRef(false);
-
-  const loadList = () => resumeApi.list().then(setList).catch(e => setError(errorMessage(e)));
-
-  useEffect(() => {
-    loadList();
-  }, []);
 
   const upload = async (file: File) => {
     if (uploadBusy.current) return;
@@ -80,8 +79,9 @@ export function ResumeManagement() {
     setError('');
     try {
       const detail = await resumeApi.upload(file);
+      rememberResumeDetail(userId, detail);
       setSelected(detail);
-      await loadList();
+      await refresh();
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -98,7 +98,7 @@ export function ResumeManagement() {
     setLoadingDetailId(id);
     setError('');
     try {
-      setSelected(await resumeApi.detail(id));
+      setSelected(await getCachedResumeDetail(userId, id));
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -112,8 +112,8 @@ export function ResumeManagement() {
     setError('');
     try {
       await resumeApi.remove(item.id);
-      setList(current => (current ?? []).filter(resume => resume.id !== item.id));
       if (selected?.id === item.id) setSelected(null);
+      await refresh();
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -158,10 +158,15 @@ export function ResumeManagement() {
         <small>PDF / Word / TXT · 最大 50 MB</small>
       </button>
 
-      {error && <div className="banner">{error}</div>}
+      {(error || listFailed) && <div className="banner">{error || '简历列表刷新失败，当前展示的内容可能不是最新的。'}</div>}
 
-      {list === null ? (
+      {list === null && !listFailed ? (
         <Loading label="读取简历列表…" />
+      ) : list === null ? (
+        <div className="resume-empty">
+          <h3>暂时无法读取简历</h3>
+          <Button onClick={() => void refresh()}>重新加载</Button>
+        </div>
       ) : list.length === 0 ? (
         <div className="resume-empty">
           <span className="resume-empty-icon"><FileText size={28} strokeWidth={1.5} /></span>
