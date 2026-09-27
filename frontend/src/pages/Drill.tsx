@@ -6,99 +6,19 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { keymap, EditorView } from '@codemirror/view';
 import { drill, aiSettings, chatStream, lessonChatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
-import { Button, Tag } from '../components/ui';
+import { Button } from '../components/ui';
 import { NoteDialog } from '../components/NoteDialog';
 import { ApiError } from '../api/client';
-import { PROBE_LABEL } from '../lib/labels';
 import type { QuestionView, QuestionMeta, GradeView, PlanView, ConversationView, LessonQaMessageView } from '../api/types';
 import { ConversationStream, VerdictPanel } from '../components/ConversationStream';
 import { Markdown } from '../components/Markdown';
+import { fmt, ReasoningPanel, nextMsgId, type ChatMsg } from './DrillChatBits';
+import { ChatBubble } from './DrillBubble';
+import { ConfirmDialog, PromptDialog } from './DrillDialogs';
+import { convToMessages, runTurnsToMessages } from '../lib/drillConversation';
+import { compressImage, MAX_IMAGES } from '../lib/drillImage';
 import { Plans } from './Plans';
 import './Drill.css';
-
-function fmt(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-// —— 思考过程打字机：即使模型一次吐一大段，也逐字揭示，视觉上像流式 ——
-function useTypewriter(target: string, active: boolean, charsPerSec = 320): string {
-  const [revealed, setRevealed] = useState(0);
-  const targetRef = useRef(target);
-  targetRef.current = target;
-  const activeRef = useRef(active);
-  activeRef.current = active;
-
-  // 完成 / 非生成态：直接显示全部，避免停在半句话上
-  useEffect(() => {
-    if (!active) setRevealed(targetRef.current.length);
-  }, [active]);
-
-  // 生成中：逐步揭示，并持续追上新到达的文本
-  useEffect(() => {
-    if (!active) return;
-    const tick = Math.max(1, Math.round(charsPerSec / 20)); // ~50ms 一帧，每帧揭示若干字符
-    const id = setInterval(() => {
-      setRevealed(prev => {
-        if (!activeRef.current) return targetRef.current.length;
-        return Math.min(targetRef.current.length, prev + tick);
-      });
-    }, 50);
-    return () => clearInterval(id);
-  }, [active, charsPerSec]);
-
-  // 目标变短（切换子点 / 重置）时收敛揭示进度
-  useEffect(() => {
-    setRevealed(prev => Math.min(prev, targetRef.current.length));
-  }, [targetRef.current.length]);
-
-  return target.slice(0, revealed);
-}
-
-/** 思考面板：可折叠 + 打字机逐字揭示；流式时默认自动滚动到底部展示最新输出，
- *  用户手动向上滚动（离开底部约 28px）后暂停自动跟随，回到底部再恢复。 */
-function ReasoningPanel({ text, active, speed, title = 'AI 思考过程' }: { text: string; active?: boolean; speed?: number; title?: string }) {
-  const shown = useTypewriter(text, active ?? false, speed);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const pinnedRef = useRef(true); // 是否鹏在底部（自动跟随最新输出）
-
-  // 内容随打字机逐帧变高：只要仍鹏在底部，就滚到底展示最新字
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !pinnedRef.current) return;
-    el.scrollTop = el.scrollHeight;
-  }, [shown]);
-
-  // 用户滚动：离开底部（容差 28px）暂停跟随；回到底部恢复
-  const handleScroll = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 28;
-  };
-
-  return (
-    <details className="reasoning-panel" open>
-      <summary>{title}</summary>
-      <div className="reasoning-text" ref={scrollRef} onScroll={handleScroll}>
-        <Markdown>{shown}</Markdown>
-      </div>
-    </details>
-  );
-}
-
-// —— 聊天消息：stem(题干) / chat(对话) 两型；reasoning 为 AI 思考过程（可折叠展示）——
-interface ChatMsg {
-  id: string;
-  role: 'ai' | 'me';
-  text: string;
-  streaming?: boolean;
-  type: 'stem' | 'chat';
-  reasoning?: string;
-  paused?: boolean;   // AI 回复被用户「暂停」：已显示的内容保留，但未答完的回复不落库
-  images?: string[];  // 用户消息附带的图片（data URL）
-  revealed?: boolean; // 该 AI 回复是「参考答案」（答案已揭示，评分只取揭示之前的回答）
-}
 
 // —— 一次练习会话的上下文：决定「下一题」去哪抽 ——
 type SessionCtx =
@@ -114,38 +34,12 @@ type SessionCtx =
 // —— learn 阶段：生成题目 → 对话 → 评分中 → 已评分 ——
 type Phase = 'generating' | 'chatting' | 'finishing' | 'graded';
 
-let msgCounter = 0;
-const nextMsgId = () => `m${++msgCounter}`;
 
 // 先教后考开关（localStorage，默认开）
 const TEACH_FIRST_KEY = 'mianba.teachFirst';
 
 // 把一条对话线（全部 run 的所有轮）扁平化为聊天消息数组：
 // AI 题干 → 每轮「我的回答 / AI 讲解」按时间顺序串起来。恢复对话与追问场共用。
-function convToMessages(conv: ConversationView): ChatMsg[] {
-  const msgs: ChatMsg[] = [
-    { id: nextMsgId(), role: 'ai', text: conv.stem, streaming: false, type: 'stem' },
-  ];
-  for (const run of conv.runs) {
-    for (const turn of run.turns) {
-      if (turn.rawAnswer) msgs.push({ id: nextMsgId(), role: 'me', text: turn.rawAnswer, type: 'chat', images: turn.images ?? [] });
-      if (turn.tutorText) msgs.push({ id: nextMsgId(), role: 'ai', text: turn.tutorText, type: 'chat' });
-    }
-  }
-  return msgs;
-}
-
-// 只取某 run 已有的轮次（不含题干）：「继续学习」恢复到进行中的题时，把之前的问答历史载入聊天线程
-function runTurnsToMessages(conv: ConversationView, runId: number): ChatMsg[] {
-  const run = conv.runs.find((r) => r.runId === runId);
-  if (!run) return [];
-  const msgs: ChatMsg[] = [];
-  for (const turn of run.turns) {
-    if (turn.rawAnswer) msgs.push({ id: nextMsgId(), role: 'me', text: turn.rawAnswer, type: 'chat', images: turn.images ?? [] });
-    if (turn.tutorText) msgs.push({ id: nextMsgId(), role: 'ai', text: turn.tutorText, type: 'chat' });
-  }
-  return msgs;
-}
 
 export function Drill() {
   const location = useLocation();
@@ -970,32 +864,6 @@ export function Drill() {
   };
 
   // ===== 图片上传（截图/粘贴，仅视觉模型开放）=====
-  const MAX_IMAGES = 4;
-  const MAX_IMG_PX = 1280;
-
-  /** 压缩图片为 data URL：长边 ≤1280、JPEG 质量 0.85（PNG 保留透明）。 */
-  const compressImage = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const url = URL.createObjectURL(file);
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const scale = Math.min(1, MAX_IMG_PX / Math.max(img.width, img.height));
-          const w = Math.max(1, Math.round(img.width * scale));
-          const h = Math.max(1, Math.round(img.height * scale));
-          const canvas = document.createElement('canvas');
-          canvas.width = w; canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) throw new Error('canvas 不可用');
-          ctx.drawImage(img, 0, 0, w, h);
-          const isPng = file.type === 'image/png';
-          resolve(canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', 0.85));
-        } catch (e) { reject(e); }
-        finally { URL.revokeObjectURL(url); }
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('图片读取失败')); };
-      img.src = url;
-    });
 
   const addImageFiles = async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
@@ -2103,200 +1971,3 @@ export function Drill() {
 }
 
 // ===== 单条聊天气泡渲染 =====
-function ChatBubble({
-  msg: m,
-  meta,
-  timingOn,
-  seconds,
-}: {
-  msg: ChatMsg;
-  meta: QuestionMeta | null;
-  timingOn: boolean;
-  seconds: number;
-}) {
-  // 思考中 / 生成中：streaming 且还没出字
-  const isThinking = m.streaming && !m.text;
-  const thinkingText = m.type === 'stem' ? '正在生成题目…' : '思考中…';
-
-  const rowCls = isThinking
-    ? `chat-row chat-row-${m.role} chat-row-loading`
-    : `chat-row chat-row-${m.role}`;
-  const bubbleCls =
-    `chat-bubble chat-bubble-${m.role}` +
-    (m.type === 'stem' ? ' is-stem' : '') +
-    (m.type === 'chat' && m.role === 'ai' && !isThinking ? ' is-tutor' : '') +
-    (isThinking ? ' is-loading' : '');
-
-  return (
-    <div className={rowCls}>
-      {m.role === 'ai' && (
-        <div className="chat-avatar chat-avatar-ai"><span>AI</span></div>
-      )}
-      <div className={bubbleCls}>
-        {/* 题干 meta 信息（probe type / runId / 计时）*/}
-        {m.type === 'stem' && meta && (
-          <div className="chat-stem-meta">
-            <Tag>{PROBE_LABEL[meta.probeType] ?? meta.probeType}</Tag>
-            <span className="eyebrow">run #{meta.runId}</span>
-            {timingOn && (
-              <span className="timer-chip">
-                <Timer size={14} strokeWidth={1.8} /> {fmt(seconds)}
-              </span>
-            )}
-          </div>
-        )}
-        {isThinking ? (
-          <>
-            <span className="spinner-sm" /> {thinkingText}
-          </>
-        ) : m.type === 'stem' ? (
-          // 题干不走 tutor-text（避免"讲解 ·"前缀）；思考过程流式展示（默认展开，markdown）
-          <>
-            {m.reasoning && <ReasoningPanel text={m.reasoning} active={m.streaming} />}
-            <Markdown>{m.text}</Markdown>
-            {m.streaming && <span className="tutor-caret" aria-hidden />}
-          </>
-        ) : m.role === 'ai' ? (
-          // AI 对话回复走 tutor-text 样式；思考过程流式展示（默认展开，markdown），正文保持干净。
-          // revealed=true（答案已揭示）时在气泡顶部渲染「参考答案」分隔线。
-          <>
-            {m.revealed && (
-              <div className="chat-reveal-divider">
-                <span>参考答案 · 此后的回答不再计入评分</span>
-              </div>
-            )}
-            <div className="tutor-text">
-            {m.reasoning && <ReasoningPanel text={m.reasoning} active={m.streaming} />}
-            <Markdown>{m.text}</Markdown>
-            {m.streaming && <span className="tutor-caret" aria-hidden />}
-          </div>
-          {m.paused && (
-            <div className="chat-paused-note">⏸ 已暂停：未答完的回复未保存，可继续提问</div>
-          )}
-          </>
-        ) : (
-          // 用户自己的消息：Markdown 渲染（与 AI 同款），贴的代码自动高亮；图片原样展示
-          <div className="me-text">
-            {m.images && m.images.length > 0 && (
-              <div className="chat-img-row">
-                {m.images.map((src, i) => <img key={i} src={src} alt={`消息图片 ${i + 1}`} loading="lazy" />)}
-              </div>
-            )}
-            <Markdown>{m.text}</Markdown>
-          </div>
-        )}
-      </div>
-      {m.role === 'me' && (
-        <div className="chat-avatar chat-avatar-me"><span>我</span></div>
-      )}
-    </div>
-  );
-}
-
-// —— 应用内确认弹窗（Electron 不支持 window.confirm/prompt，必须用组件弹窗）——
-function ConfirmDialog({
-  title,
-  message,
-  confirmText = '确定',
-  danger = false,
-  busy = false,
-  onConfirm,
-  onClose,
-}: {
-  title: string;
-  message: string;
-  confirmText?: string;
-  danger?: boolean;
-  busy?: boolean;
-  onConfirm: () => void;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  return (
-    <div className="app-modal-backdrop" onClick={onClose}>
-      <div className="app-modal" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
-        <h3 className="app-modal-title">{title}</h3>
-        <p className="app-modal-message">{message}</p>
-        <div className="app-modal-actions">
-          <Button variant="ghost" onClick={onClose} disabled={busy}>取消</Button>
-          <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} disabled={busy}>
-            {busy ? '处理中…' : confirmText}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// —— 应用内输入弹窗（Electron 不支持 window.prompt）——
-function PromptDialog({
-  title,
-  placeholder,
-  initial = '',
-  submitText = '确定',
-  onSubmit,
-  onClose,
-}: {
-  title: string;
-  placeholder?: string;
-  initial?: string;
-  submitText?: string;
-  onSubmit: (value: string) => Promise<void>;
-  onClose: () => void;
-}) {
-  const [value, setValue] = useState(initial);
-  const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  const submit = async () => {
-    const v = value.trim();
-    if (!v) { setErr('不能为空'); return; }
-    setBusy(true);
-    setErr('');
-    try {
-      await onSubmit(v);
-      onClose();
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : '操作失败');
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="app-modal-backdrop" onClick={onClose}>
-      <div className="app-modal" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
-        <h3 className="app-modal-title">{title}</h3>
-        {err && <div className="banner info">{err}</div>}
-        <input
-          ref={inputRef}
-          className="app-modal-input"
-          value={value}
-          placeholder={placeholder}
-          disabled={busy}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            e.stopPropagation();
-            if (e.key === 'Enter' && !busy) { e.preventDefault(); void submit(); }
-            if (e.key === 'Escape') onClose();
-          }}
-        />
-        <div className="app-modal-actions">
-          <Button variant="ghost" onClick={onClose} disabled={busy}>取消</Button>
-          <Button onClick={submit} disabled={busy || !value.trim()}>
-            {busy ? '处理中…' : submitText}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
