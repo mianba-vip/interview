@@ -84,14 +84,16 @@ public class RehearsalService {
 
     @Transactional
     public RehearsalView start(Long userId, Long conceptId) {
-        // 有未结算的 REHEARSAL 先直接恢复（与 LEARN openRun 同策略）：
-        // 否则会先花 ~20s 现场生成题目、最后才撞物理唯一闸门 409，白白浪费一次生成。
-        DrillRun active = runRepo.findByUserIdAndModeOrderByIdDesc(userId, DrillMode.REHEARSAL)
-                .stream()
-                .filter(r -> r.getStatus() == DrillRunStatus.ANSWERING)
-                .findFirst()
-                .orElse(null);
+        // V28 全局唯一 active 闸门（每用户最多一个 READY/ANSWERING，不分 mode）前置检查：
+        // active 是 REHEARSAL 就直接恢复（与 LEARN openRun 同策略）；
+        // 是别的 mode 则立即 409——绝不能先花 ~20s 现场生成题目、最后才撞物理闸门。
+        List<DrillRun> actives = runRepo.findByUserIdAndStatusIn(userId,
+                List.of(DrillRunStatus.READY, DrillRunStatus.ANSWERING));
+        DrillRun active = actives.isEmpty() ? null : actives.get(0);
         if (active != null) {
+            if (active.getMode() != DrillMode.REHEARSAL) {
+                throw new ResponseStatusException(CONFLICT, "已有未完成的作答，请先完成或搁置");
+            }
             DrillTurn turn = turnRepo.findByRunIdAndRound(active.getId(), active.getCurrentRound())
                     .or(() -> turnRepo.findByRunIdAndRound(active.getId(), 0))
                     .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "未完成面试的题目不存在"));
