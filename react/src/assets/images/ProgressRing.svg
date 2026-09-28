@@ -1,0 +1,5 @@
+<svg viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="56.000000" height="56.000000" fill="none" customFrame="#000000">
+	<rect id="ProgressRing" width="56.000000" height="56.000000" x="0.000000" y="0.000000" />
+	<circle id="椭圆 36" cx="28" cy="28" r="22" stroke="rgb(243,239,231)" stroke-width="6.000000" />
+	<circle id="椭圆 37" cx="22" cy="22" r="22" stroke="rgb(108,92,231)" stroke-linecap="round" stroke-dasharray="94 138.2 " stroke-width="6.000000" transform="matrix(0,-1,1,0,6,50)" />
+</svg>

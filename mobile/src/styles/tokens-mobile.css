@@ -4,7 +4,7 @@
   --bg: #faf7f2;            /* 奶油白页面底 */
   --card: #ffffff;          /* 纯白卡片 */
   --input: #f3efe7;         /* 米白输入底 */
-  --line: #efe9de;
+  --line: #ece6dc;           /* 对齐导出 --color-border-base */
 
   /* 文字 */
   --ink: #2d2a26;           /* 深可可主文字 */
@@ -21,6 +21,8 @@
   --lemon: #f5c518;         --lemon-soft: #fef7dc;   /* 新学 / 进行中 / 提醒 */
   --coral: #ff6b6b;         --coral-soft: #ffe9e9;   /* 错误 / AGAIN */
   --sky: #4d96ff;           --sky-soft: #e8f1ff;     /* 面试 */
+  --purplelight: #a99bf5;                            /* 浅紫（渐变浅端） */
+  --bg-code: #f7f4ee;                                /* 代码块底（导出 variables.css） */
 
   /* 渐变与投影 */
   --grad-primary: linear-gradient(135deg, #6c5ce7, #8b7cf0);
