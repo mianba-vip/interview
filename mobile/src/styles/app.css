@@ -762,3 +762,21 @@ textarea {
   text-align: center;
   padding: 28px 20px;
 }
+
+/* ---- 行内代码：嵌在句子里，不再断行 ---- */
+.mdlite code.mono-inline {
+  background: var(--input);
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+
+/* ---- 行内代码：嵌在句子里，不再断行 ---- */
+.mdlite code.mono-inline {
+  background: var(--input);
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
