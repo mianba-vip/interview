@@ -1,5 +1,55 @@
 import "@/styles/Frame2877.css";
-const Frame2877 = () => {
+import { MarkdownLite } from "@/components/MarkdownLite";
+
+/** 评分点一行：byConceptJson 摊平后的 { point, verdict } */
+export interface ReviewRow {
+    point: string;
+    verdict: string; // HIT / PARTIAL / MISS / NA
+}
+
+export interface Frame2877Props {
+    grade: string; // GOOD / EASY / HARD / MISSING …
+    score: string; // 取整后的分数文案
+    timeText: string; // 用时 …（推导不出时为兜底文案）
+    attemptText: string; // 第 N 次作答
+    rows: ReviewRow[]; // 评分点明细
+    weak: string[]; // 欠缺点列表（标题数量取 length）
+    approach: string; // 解题思路（Markdown）
+    mnemonic: string; // 记忆口诀（Markdown）
+    cardText: string; // 沉淀按钮文案（防重复点击：沉淀中… / 已沉淀）
+    cardDisabled: boolean;
+    onBack: () => void;
+    onCard: () => void;
+}
+
+/** 评分点三色 pill：命中薄荷 / 部分柠檬 / 缺失珊瑚 / 未考察中性——沿用模板既有配色 */
+const PILL: Record<string, { bg: string; fg: string }> = {
+    HIT: { bg: "var(--color-brand-mintsoft)", fg: "var(--color-brand-mint)" },
+    PARTIAL: { bg: "var(--color-brand-lemonsoft)", fg: "var(--color-brand-lemon)" },
+    MISS: { bg: "var(--color-brand-coralsoft)", fg: "var(--color-brand-coral)" },
+    NA: { bg: "var(--color-bg-input)", fg: "var(--color-text-secondary)" },
+};
+const VERDICT_LABEL: Record<string, string> = {
+    HIT: "命中",
+    PARTIAL: "部分",
+    MISS: "缺失",
+    NA: "未考察",
+};
+
+const Frame2877 = ({
+    grade,
+    score,
+    timeText,
+    attemptText,
+    rows,
+    weak,
+    approach,
+    mnemonic,
+    cardText,
+    cardDisabled,
+    onBack,
+    onCard,
+}: Frame2877Props) => {
     return (
         <div className="scroll-container">
             <div
@@ -12,6 +62,7 @@ const Frame2877 = () => {
                 >
                     <div className="frame-content-2_878 pixso-relative-flex">
                         <div
+                            onClick={onBack}
                             id="2_879"
                             className="Pixso-frame-2_879 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex"
                         >
@@ -52,6 +103,7 @@ const Frame2877 = () => {
                 <div
                     id="2_892"
                     className="Pixso-frame-2_892 pixso-relative-no-shrink pixso-flex-auto-height"
+                    style={{ overflowY: "auto" }}
                 >
                     <div className="frame-content-2_892 pixso-relative-flex">
                         <div
@@ -72,7 +124,7 @@ const Frame2877 = () => {
                                             id="2_898"
                                             className="Pixso-paragraph-2_898 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
-                                            {"GOOD"}
+                                            {grade}
                                         </p>
                                     </div>
                                     <div className="stroke-2_894"></div>
@@ -85,7 +137,7 @@ const Frame2877 = () => {
                                         id="2_900"
                                         className="Pixso-paragraph-2_900 pixso-relative-auto-size pixso-flex-shrink-0"
                                     >
-                                        {"85"}
+                                        {score}
                                     </p>
                                     <p
                                         id="2_901"
@@ -102,7 +154,7 @@ const Frame2877 = () => {
                                         id="2_903"
                                         className="Pixso-paragraph-2_903 pixso-relative-auto-size pixso-flex-shrink-0"
                                     >
-                                        {"用时 6 分 32 秒"}
+                                        {timeText}
                                     </p>
                                     <div
                                         id="2_904"
@@ -112,7 +164,7 @@ const Frame2877 = () => {
                                         id="2_905"
                                         className="Pixso-paragraph-2_905 pixso-relative-auto-size pixso-flex-shrink-0"
                                     >
-                                        {"第 1 次作答"}
+                                        {attemptText}
                                     </p>
                                 </div>
                             </div>
@@ -128,104 +180,38 @@ const Frame2877 = () => {
                                 >
                                     {"评分点明细"}
                                 </p>
-                                <div
-                                    id="2_908"
-                                    className="Pixso-frame-2_908 pixso-relative-no-shrink pixso-flex-auto-height"
-                                >
-                                    <div className="frame-content-2_908 pixso-relative-flex">
-                                        <p
-                                            id="2_909"
-                                            className="Pixso-paragraph-2_909 pixso-position-relative pixso-h-auto"
-                                        >
-                                            {"正确指出 Parse 默认使用 UTC"}
-                                        </p>
-                                        <div
-                                            id="2_910"
-                                            className="Pixso-frame-2_910 pixso-relative-flex-auto-size pixso-flex-shrink-0"
-                                        >
-                                            <p
-                                                id="2_911"
-                                                className="Pixso-paragraph-2_911 pixso-relative-auto-size pixso-flex-shrink-0"
+                                {rows.length > 0 ? (
+                                    rows.map((it, i) => {
+                                        const pill = PILL[it.verdict] ?? PILL.NA;
+                                        return (
+                                            <div
+                                                key={i}
+                                                className="Pixso-frame-2_908 pixso-relative-no-shrink pixso-flex-auto-height"
                                             >
-                                                {"命中"}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div
-                                    id="2_912"
-                                    className="Pixso-frame-2_912 pixso-relative-no-shrink pixso-flex-auto-height"
-                                >
-                                    <div className="frame-content-2_912 pixso-relative-flex">
-                                        <p
-                                            id="2_913"
-                                            className="Pixso-paragraph-2_913 pixso-position-relative pixso-h-auto"
-                                        >
-                                            {"区分「解析」与「格式化」两个阶段"}
-                                        </p>
-                                        <div
-                                            id="2_914"
-                                            className="Pixso-frame-2_914 pixso-relative-flex-auto-size pixso-flex-shrink-0"
-                                        >
-                                            <p
-                                                id="2_915"
-                                                className="Pixso-paragraph-2_915 pixso-relative-auto-size pixso-flex-shrink-0"
-                                            >
-                                                {"部分"}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div
-                                    id="2_916"
-                                    className="Pixso-frame-2_916 pixso-relative-no-shrink pixso-flex-auto-height"
-                                >
-                                    <div className="frame-content-2_916 pixso-relative-flex">
-                                        <p
-                                            id="2_917"
-                                            className="Pixso-paragraph-2_917 pixso-position-relative pixso-h-auto"
-                                        >
-                                            {
-                                                "说明 loc 参数如何影响 Format 输出"
-                                            }
-                                        </p>
-                                        <div
-                                            id="2_918"
-                                            className="Pixso-frame-2_918 pixso-relative-flex-auto-size pixso-flex-shrink-0"
-                                        >
-                                            <p
-                                                id="2_919"
-                                                className="Pixso-paragraph-2_919 pixso-relative-auto-size pixso-flex-shrink-0"
-                                            >
-                                                {"缺失"}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div
-                                    id="2_920"
-                                    className="Pixso-frame-2_920 pixso-relative-no-shrink pixso-flex-auto-height"
-                                >
-                                    <div className="frame-content-2_920 pixso-relative-flex">
-                                        <p
-                                            id="2_921"
-                                            className="Pixso-paragraph-2_921 pixso-position-relative pixso-h-auto"
-                                        >
-                                            {"给出 ParseInLocation 的修复方案"}
-                                        </p>
-                                        <div
-                                            id="2_922"
-                                            className="Pixso-frame-2_922 pixso-relative-flex-auto-size pixso-flex-shrink-0"
-                                        >
-                                            <p
-                                                id="2_923"
-                                                className="Pixso-paragraph-2_923 pixso-relative-auto-size pixso-flex-shrink-0"
-                                            >
-                                                {"命中"}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
+                                                <div className="frame-content-2_908 pixso-relative-flex">
+                                                    <p className="Pixso-paragraph-2_909 pixso-position-relative pixso-h-auto">
+                                                        {it.point}
+                                                    </p>
+                                                    <div
+                                                        style={{ backgroundColor: pill.bg }}
+                                                        className="Pixso-frame-2_910 pixso-relative-flex-auto-size pixso-flex-shrink-0"
+                                                    >
+                                                        <p
+                                                            style={{ color: pill.fg }}
+                                                            className="Pixso-paragraph-2_911 pixso-relative-auto-size pixso-flex-shrink-0"
+                                                        >
+                                                            {VERDICT_LABEL[it.verdict] ?? it.verdict}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                ) : (
+                                    <p className="Pixso-paragraph-2_909 pixso-position-relative pixso-h-auto">
+                                        {"暂无评分点明细"}
+                                    </p>
+                                )}
                             </div>
                         </div>
                         <div
@@ -281,48 +267,20 @@ const Frame2877 = () => {
                                             id="2_934"
                                             className="Pixso-paragraph-2_934 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
-                                            {"对话总结 · 2 个欠缺点"}
+                                            {`对话总结 · ${weak.length} 个欠缺点`}
                                         </p>
                                     </div>
                                 </div>
-                                <div
-                                    id="2_935"
-                                    className="Pixso-frame-2_935 pixso-relative-no-shrink pixso-flex-auto-height"
-                                >
-                                    <div className="frame-content-2_935 pixso-relative-flex">
-                                        <div
-                                            id="2_936"
-                                            className="Pixso-frame-2_936 pixso-relative-no-shrink"
-                                        ></div>
-                                        <p
-                                            id="2_937"
-                                            className="Pixso-paragraph-2_937 pixso-position-relative pixso-h-auto"
-                                        >
-                                            {
-                                                "没有说明 Parse 的默认 Location 来自运行环境（UTC 容器 → UTC 时间）"
-                                            }
-                                        </p>
+                                {(weak.length > 0 ? weak : ["暂无欠缺点记录"]).map((w, i) => (
+                                    <div key={i} className="Pixso-frame-2_935 pixso-relative-no-shrink pixso-flex-auto-height">
+                                        <div className="frame-content-2_935 pixso-relative-flex">
+                                            <div className="Pixso-frame-2_936 pixso-relative-no-shrink"></div>
+                                            <p className="Pixso-paragraph-2_937 pixso-position-relative pixso-h-auto">
+                                                {w}
+                                            </p>
+                                        </div>
                                     </div>
-                                </div>
-                                <div
-                                    id="2_938"
-                                    className="Pixso-frame-2_938 pixso-relative-no-shrink pixso-flex-auto-height"
-                                >
-                                    <div className="frame-content-2_938 pixso-relative-flex">
-                                        <div
-                                            id="2_939"
-                                            className="Pixso-frame-2_939 pixso-relative-no-shrink"
-                                        ></div>
-                                        <p
-                                            id="2_940"
-                                            className="Pixso-paragraph-2_940 pixso-position-relative pixso-h-auto"
-                                        >
-                                            {
-                                                "未提到 ParseInLocation 的第三个参数 loc 到底是给谁用的"
-                                            }
-                                        </p>
-                                    </div>
-                                </div>
+                                ))}
                             </div>
                         </div>
                         <div
@@ -358,45 +316,7 @@ const Frame2877 = () => {
                                     id="2_949"
                                     className="Pixso-text-2_949 pixso-relative-no-shrink pixso-h-auto"
                                 >
-                                    <p
-                                        id="2_949_0"
-                                        className="Pixso-paragraph-2_949_0 pixso-relative-no-shrink"
-                                    >
-                                        <span
-                                            id="2_949_0_1"
-                                            className="Pixso-span-2_949_0_1 pixso-relative-no-shrink"
-                                        >
-                                            {
-                                                "1  先判断 Parse 用的 Location：不传 loc 时默认走 UTC。"
-                                            }
-                                        </span>
-                                    </p>
-                                    <p
-                                        id="2_949_1"
-                                        className="Pixso-paragraph-2_949_1 pixso-relative-no-shrink"
-                                    >
-                                        <span
-                                            id="2_949_1_1"
-                                            className="Pixso-span-2_949_1_1 pixso-relative-no-shrink"
-                                        >
-                                            {
-                                                "2  再确认容器时区：TZ=UTC 只影响 time.Local，不影响 Parse 的默认值。"
-                                            }
-                                        </span>
-                                    </p>
-                                    <p
-                                        id="2_949_2"
-                                        className="Pixso-paragraph-2_949_2 pixso-relative-no-shrink"
-                                    >
-                                        <span
-                                            id="2_949_2_1"
-                                            className="Pixso-span-2_949_2_1 pixso-relative-no-shrink"
-                                        >
-                                            {
-                                                "3  需要按北京时间输出时，解析阶段就用 ParseInLocation(layout, s, loc)。"
-                                            }
-                                        </span>
-                                    </p>
+                                    <MarkdownLite text={approach} />
                                 </div>
                             </div>
                         </div>
@@ -422,14 +342,12 @@ const Frame2877 = () => {
                                         </p>
                                     </div>
                                 </div>
-                                <p
+                                <div
                                     id="2_956"
                                     className="Pixso-paragraph-2_956 pixso-relative-no-shrink pixso-h-auto"
                                 >
-                                    {
-                                        "解析认环境，格式化认 Location——想让两边都听话，就用 ParseInLocation。"
-                                    }
-                                </p>
+                                    <MarkdownLite text={mnemonic} />
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -457,6 +375,7 @@ const Frame2877 = () => {
                             </div>
                         </div>
                         <div
+                            onClick={cardDisabled ? undefined : onCard}
                             id="2_963"
                             className="stroke-wrapper-2_963 pixso-relative-flex"
                         >
@@ -468,7 +387,7 @@ const Frame2877 = () => {
                                         id="2_964"
                                         className="Pixso-paragraph-2_964 pixso-relative-auto-size pixso-flex-shrink-0"
                                     >
-                                        {"沉淀为知识卡"}
+                                        {cardText}
                                     </p>
                                 </div>
                             </div>

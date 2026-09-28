@@ -1,7 +1,59 @@
 import "@/styles/Frame2394.css";
 import { useNavigate } from "react-router-dom";
-const Frame2394 = () => {
+
+/** 任务状态位文案（卡片右侧）。 */
+const statusText = (s: string) =>
+    s === "READY" ? "已就绪 · 秒开" : s === "PENDING" ? "生成中…" : s === "DONE" ? "已完成 ✓" : "";
+/** 任务卡按钮文案。 */
+const btnText = (s: string) =>
+    s === "READY" ? "开始练习" : s === "PENDING" ? "生成中…" : "已完成";
+
+export interface HomeTaskItem {
+    id: number;
+    kind: "REVIEW" | "NEW";
+    title: string;
+    status: string;
+    conceptId: number;
+    subPoint: string | null;
+}
+
+export interface Frame2394Props {
+    name: string;
+    streakDays: number;
+    direction: string;
+    mastered: number;
+    inProgress: number;
+    notMastered: number;
+    total: number;
+    unlockHint: string;
+    progress: number;
+    taskSummary: string;
+    tasks: HomeTaskItem[];
+    debtText: string;
+    onTaskClick?: (id: number) => void;
+    onStart?: () => void;
+    onLesson?: (conceptId: number, subPoint: string | null) => void;
+}
+
+const Frame2394 = ({
+    name,
+    streakDays,
+    direction,
+    mastered,
+    inProgress,
+    notMastered,
+    total,
+    unlockHint,
+    progress,
+    taskSummary,
+    tasks,
+    debtText,
+    onTaskClick,
+    onStart,
+    onLesson,
+}: Frame2394Props) => {
     const navigate = useNavigate();
+    const greet = new Date().getHours() < 12 ? "早上好" : "晚上好";
     return (
         <div className="scroll-container">
             <div
@@ -65,6 +117,7 @@ const Frame2394 = () => {
                 <div
                     id="2_415"
                     className="Pixso-frame-2_415 pixso-relative-no-shrink pixso-flex-auto-height"
+                    style={{ overflowY: "auto" }}
                 >
                     <div className="frame-content-2_415 pixso-relative-flex">
                         <div
@@ -84,7 +137,7 @@ const Frame2394 = () => {
                                             id="2_419"
                                             className="Pixso-paragraph-2_419 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
-                                            {"晚上好，Xiaoyu"}
+                                            {`${greet}，${name}`}
                                         </p>
                                         <div
                                             id="2_420"
@@ -103,7 +156,7 @@ const Frame2394 = () => {
                                             id="2_433"
                                             className="Pixso-paragraph-2_433 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
-                                            {"连续学习 7 天"}
+                                            {`连续学习 ${streakDays} 天`}
                                         </p>
                                     </div>
                                 </div>
@@ -116,7 +169,7 @@ const Frame2394 = () => {
                                             id="2_435"
                                             className="Pixso-paragraph-2_435 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
-                                            {"Go 后端工程师"}
+                                            {direction}
                                         </p>
                                         <div
                                             id="2_436"
@@ -191,7 +244,7 @@ const Frame2394 = () => {
                                                         id="2_456"
                                                         className="Pixso-paragraph-2_456 pixso-relative-auto-size pixso-flex-shrink-0"
                                                     >
-                                                        {"25"}
+                                                        {total}
                                                     </p>
                                                     <p
                                                         id="2_457"
@@ -224,7 +277,7 @@ const Frame2394 = () => {
                                                                 id="2_462"
                                                                 className="Pixso-paragraph-2_462 pixso-relative-auto-size pixso-flex-shrink-0"
                                                             >
-                                                                {"已掌握 12"}
+                                                                {`已掌握 ${mastered}`}
                                                             </p>
                                                         </div>
                                                         <div
@@ -239,7 +292,7 @@ const Frame2394 = () => {
                                                                 id="2_465"
                                                                 className="Pixso-paragraph-2_465 pixso-relative-auto-size pixso-flex-shrink-0"
                                                             >
-                                                                {"进行中 5"}
+                                                                {`进行中 ${inProgress}`}
                                                             </p>
                                                         </div>
                                                         <div
@@ -254,7 +307,7 @@ const Frame2394 = () => {
                                                                 id="2_468"
                                                                 className="Pixso-paragraph-2_468 pixso-relative-auto-size pixso-flex-shrink-0"
                                                             >
-                                                                {"未掌握 8"}
+                                                                {`未掌握 ${notMastered}`}
                                                             </p>
                                                         </div>
                                                     </div>
@@ -271,7 +324,7 @@ const Frame2394 = () => {
                                                         id="2_474"
                                                         className="Pixso-paragraph-2_474 pixso-relative-auto-size pixso-flex-shrink-0"
                                                     >
-                                                        {"L1 达标 50% 解锁 L2"}
+                                                        {unlockHint}
                                                     </p>
                                                 </div>
                                             </div>
@@ -298,7 +351,7 @@ const Frame2394 = () => {
                                                     id="2_478"
                                                     className="Pixso-paragraph-2_478 pixso-relative-auto-size pixso-flex-shrink-0"
                                                 >
-                                                    {"42%"}
+                                                    {`${progress}%`}
                                                 </p>
                                             </div>
                                         </div>
@@ -332,11 +385,14 @@ const Frame2394 = () => {
                                     id="2_483"
                                     className="Pixso-paragraph-2_483 pixso-relative-auto-size pixso-flex-shrink-0"
                                 >
-                                    {"4 项 · 约 32 分钟"}
+                                    {taskSummary}
                                 </p>
                             </div>
                         </div>
+                        {tasks.map((t) => (
                         <div
+                            key={t.id}
+                            onClick={() => onTaskClick?.(t.id)}
                             id="2_484"
                             className="Pixso-frame-2_484 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex-auto-height"
                         >
@@ -358,14 +414,14 @@ const Frame2394 = () => {
                                                 id="2_490"
                                                 className="Pixso-paragraph-2_490 pixso-relative-auto-size pixso-flex-shrink-0"
                                             >
-                                                {"复习"}
+                                                {t.kind === "REVIEW" ? "复习" : "新学"}
                                             </p>
                                         </div>
                                         <p
                                             id="2_491"
                                             className="Pixso-paragraph-2_491 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
-                                            {"已就绪 · 秒开"}
+                                            {statusText(t.status)}
                                         </p>
                                     </div>
                                 </div>
@@ -373,9 +429,27 @@ const Frame2394 = () => {
                                     id="2_492"
                                     className="Pixso-paragraph-2_492 pixso-relative-no-shrink pixso-h-auto"
                                 >
-                                    {"time.Format 时区语义"}
+                                    {t.title}
+                                </p>
+                                <p
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onLesson?.(t.conceptId, t.subPoint);
+                                    }}
+                                    style={{
+                                        fontSize: "var(--font-caption)",
+                                        fontWeight: 600,
+                                        color: "var(--color-brand-purple)",
+                                        cursor: "pointer",
+                                    }}
+                                >
+                                    {"先听讲解 →"}
                                 </p>
                                 <div
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onStart?.();
+                                    }}
                                     id="2_493"
                                     className="Pixso-frame-2_493 pixso-relative-no-shrink pixso-flex"
                                 >
@@ -384,165 +458,13 @@ const Frame2394 = () => {
                                             id="2_494"
                                             className="Pixso-paragraph-2_494 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
-                                            {"开始练习"}
+                                            {btnText(t.status)}
                                         </p>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        <div
-                            id="2_495"
-                            className="Pixso-frame-2_495 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex-auto-height"
-                        >
-                            <div className="frame-content-2_495 pixso-relative-flex">
-                                <div
-                                    id="2_496"
-                                    className="Pixso-frame-2_496 pixso-relative-flex pixso-h-auto"
-                                >
-                                    <div className="frame-content-2_496 pixso-relative-flex">
-                                        <div
-                                            id="2_497"
-                                            className="Pixso-frame-2_497 pixso-relative-flex-auto-size pixso-flex-shrink-0"
-                                        >
-                                            <div
-                                                id="2_498"
-                                                className="Pixso-vector-2_498 pixso-relative-no-shrink"
-                                            ></div>
-                                            <p
-                                                id="2_501"
-                                                className="Pixso-paragraph-2_501 pixso-relative-auto-size pixso-flex-shrink-0"
-                                            >
-                                                {"复习"}
-                                            </p>
-                                        </div>
-                                        <p
-                                            id="2_502"
-                                            className="Pixso-paragraph-2_502 pixso-relative-no-shrink pixso-h-auto"
-                                        >
-                                            {"LLM API 密钥管理规范"}
-                                        </p>
-                                        <p
-                                            id="2_503"
-                                            className="Pixso-paragraph-2_503 pixso-relative-auto-size pixso-flex-shrink-0"
-                                        >
-                                            {"已就绪 · 掌握度 60%"}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div
-                                    id="2_504"
-                                    className="Pixso-vector-2_504 pixso-relative-no-shrink"
-                                ></div>
-                            </div>
-                        </div>
-                        <div
-                            id="2_506"
-                            className="Pixso-frame-2_506 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex-auto-height"
-                        >
-                            <div className="frame-content-2_506 pixso-relative-flex">
-                                <div
-                                    id="2_507"
-                                    className="Pixso-frame-2_507 pixso-relative-flex pixso-h-auto"
-                                >
-                                    <div className="frame-content-2_507 pixso-relative-flex">
-                                        <div
-                                            id="2_508"
-                                            className="Pixso-frame-2_508 pixso-relative-flex-auto-size pixso-flex-shrink-0"
-                                        >
-                                            <div
-                                                id="2_509"
-                                                className="Pixso-vector-2_509 pixso-relative-no-shrink"
-                                            ></div>
-                                            <p
-                                                id="2_514"
-                                                className="Pixso-paragraph-2_514 pixso-relative-auto-size pixso-flex-shrink-0"
-                                            >
-                                                {"新学"}
-                                            </p>
-                                        </div>
-                                        <p
-                                            id="2_515"
-                                            className="Pixso-paragraph-2_515 pixso-relative-no-shrink pixso-h-auto"
-                                        >
-                                            {"MySQL 索引下推"}
-                                        </p>
-                                        <div
-                                            id="2_516"
-                                            className="Pixso-frame-2_516 pixso-relative-flex-auto-size pixso-flex-shrink-0"
-                                        >
-                                            <div
-                                                id="2_517"
-                                                className="Pixso-vector-2_517 pixso-relative-no-shrink"
-                                            ></div>
-                                            <p
-                                                id="2_526"
-                                                className="Pixso-paragraph-2_526 pixso-relative-auto-size pixso-flex-shrink-0"
-                                            >
-                                                {"生成中…"}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div
-                            id="2_527"
-                            className="Pixso-frame-2_527 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex-auto-height"
-                        >
-                            <div className="frame-content-2_527 pixso-relative-flex">
-                                <div
-                                    id="2_528"
-                                    className="Pixso-frame-2_528 pixso-relative-flex pixso-h-auto"
-                                >
-                                    <div className="frame-content-2_528 pixso-relative-flex">
-                                        <div
-                                            id="2_529"
-                                            className="Pixso-frame-2_529 pixso-relative-no-shrink pixso-flex"
-                                        >
-                                            <div className="frame-content-2_529 pixso-relative-flex">
-                                                <div
-                                                    id="2_530"
-                                                    className="Pixso-vector-2_530 pixso-relative-no-shrink"
-                                                ></div>
-                                            </div>
-                                        </div>
-                                        <div
-                                            id="2_532"
-                                            className="Pixso-frame-2_532 pixso-relative-flex pixso-h-auto"
-                                        >
-                                            <div className="frame-content-2_532 pixso-relative-flex">
-                                                <p
-                                                    id="2_533"
-                                                    className="Pixso-paragraph-2_533 pixso-relative-no-shrink pixso-h-auto"
-                                                >
-                                                    {"GMP 调度模型"}
-                                                </p>
-                                                <p
-                                                    id="2_534"
-                                                    className="Pixso-paragraph-2_534 pixso-relative-auto-size pixso-flex-shrink-0"
-                                                >
-                                                    {"已完成 · 用时 6 分 32 秒"}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div
-                                    id="2_535"
-                                    className="stroke-wrapper-2_535 pixso-relative-flex-auto-size pixso-flex-shrink-0"
-                                >
-                                    <div className="Pixso-frame-2_535 pixso-relative-no-shrink pixso-flex">
-                                        <p
-                                            id="2_536"
-                                            className="Pixso-paragraph-2_536 pixso-relative-auto-size pixso-flex-shrink-0"
-                                        >
-                                            {"GOOD"}
-                                        </p>
-                                    </div>
-                                    <div className="stroke-2_535"></div>
-                                </div>
-                            </div>
-                        </div>
+                        ))}
                         <div
                             id="2_537"
                             className="Pixso-frame-2_537 pixso-relative-no-shrink pixso-flex-auto-height"
@@ -561,7 +483,7 @@ const Frame2394 = () => {
                                             id="2_543"
                                             className="Pixso-paragraph-2_543 pixso-position-relative pixso-h-auto"
                                         >
-                                            {"2 条未闭环作答等待收尾"}
+                                            {debtText}
                                         </p>
                                     </div>
                                 </div>

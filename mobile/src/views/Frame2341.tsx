@@ -1,5 +1,30 @@
 import "@/styles/Frame2341.css";
-const Frame2341 = () => {
+
+export interface Frame2341Props {
+    email: string;
+    password: string;
+    onEmailChange: (v: string) => void;
+    onPasswordChange: (v: string) => void;
+    remember: boolean;
+    onToggleRemember: () => void;
+    error: string;
+    busy: boolean;
+    onSubmit: () => void;
+    onRegister: () => void;
+}
+
+const Frame2341 = ({
+    email,
+    password,
+    onEmailChange,
+    onPasswordChange,
+    remember,
+    onToggleRemember,
+    error,
+    busy,
+    onSubmit,
+    onRegister,
+}: Frame2341Props) => {
     return (
         <div className="scroll-container">
             <div
@@ -104,12 +129,22 @@ const Frame2341 = () => {
                                             id="2_371"
                                             className="Pixso-vector-2_371 pixso-relative-no-shrink"
                                         ></div>
-                                        <p
+                                        <input
                                             id="2_374"
                                             className="Pixso-paragraph-2_374 pixso-relative-auto-size pixso-flex-shrink-0"
-                                        >
-                                            {"xiaoyu_dev@qq.com"}
-                                        </p>
+                                            value={email}
+                                            onChange={(e) => onEmailChange(e.target.value)}
+                                            placeholder="邮箱"
+                                            autoComplete="email"
+                                            style={{
+                                                flex: "1 1 0%",
+                                                minWidth: 0,
+                                                border: "none",
+                                                outline: "none",
+                                                background: "transparent",
+                                                padding: 0,
+                                            }}
+                                        />
                                     </div>
                                 </div>
                                 <div
@@ -136,12 +171,35 @@ const Frame2341 = () => {
                                                     className="Pixso-vector-2_378"
                                                 ></div>
                                             </div>
-                                            <p
+                                            <input
                                                 id="2_379"
                                                 className="Pixso-paragraph-2_379 pixso-position-relative pixso-h-auto"
-                                            >
-                                                {"••••••••"}
-                                            </p>
+                                                type="password"
+                                                value={password}
+                                                onChange={(e) => onPasswordChange(e.target.value)}
+                                                placeholder="密码"
+                                                autoComplete="current-password"
+                                                style={{
+                                                    border: "none",
+                                                    outline: "none",
+                                                    background: "transparent",
+                                                    padding: 0,
+                                                }}
+                                            />
+                                            {!password && (
+                                                <p
+                                                    className="Pixso-paragraph-2_379 pixso-position-relative pixso-h-auto"
+                                                    style={{
+                                                        position: "absolute",
+                                                        left: 44,
+                                                        top: "50%",
+                                                        transform: "translateY(-50%)",
+                                                        pointerEvents: "none",
+                                                    }}
+                                                >
+                                                    {"••••••••"}
+                                                </p>
+                                            )}
                                             <div
                                                 id="2_380"
                                                 className="Pixso-vector-2_380 pixso-relative-no-shrink"
@@ -163,19 +221,29 @@ const Frame2341 = () => {
                                     {"记住登录"}
                                 </p>
                                 <div
+                                    onClick={onToggleRemember}
                                     id="2_387"
                                     className="Pixso-frame-2_387 pixso-relative-no-shrink pixso-flex"
+                                    style={{
+                                        backgroundColor: remember
+                                            ? "var(--color-brand-purple)"
+                                            : "var(--color-text-placeholder)",
+                                    }}
                                 >
                                     <div className="frame-content-2_387 pixso-relative-flex">
                                         <div
                                             id="2_388"
                                             className="Pixso-frame-2_388 pixso-relative-no-shrink"
+                                            style={{
+                                                transform: remember ? "none" : "translateX(-18px)",
+                                            }}
                                         ></div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                         <div
+                            onClick={onSubmit}
                             id="2_389"
                             className="Pixso-frame-2_389 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex"
                         >
@@ -184,11 +252,23 @@ const Frame2341 = () => {
                                     id="2_390"
                                     className="Pixso-paragraph-2_390 pixso-relative-auto-size pixso-flex-shrink-0"
                                 >
-                                    {"登 录"}
+                                    {busy ? "登录中…" : "登 录"}
                                 </p>
                             </div>
                         </div>
+                        {error && (
+                            <p
+                                style={{
+                                    color: "var(--color-brand-coral)",
+                                    fontSize: 13,
+                                    fontFamily: "Noto Sans SC-Regular",
+                                }}
+                            >
+                                {error}
+                            </p>
+                        )}
                         <div
+                            onClick={onRegister}
                             id="2_391"
                             className="Pixso-frame-2_391 pixso-relative-no-shrink pixso-flex-auto-height"
                         >

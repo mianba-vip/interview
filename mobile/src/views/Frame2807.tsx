@@ -1,5 +1,53 @@
 import "@/styles/Frame2807.css";
-const Frame2807 = () => {
+import type { RefObject } from "react";
+import { MarkdownLite } from "@/components/MarkdownLite";
+import type { ChatMsg } from "@/api/types";
+
+export interface Frame2807Props {
+    title: string; // 顶栏题名
+    category: string; // 卡片首行：「开放题」等
+    modeLabel: string; // 「简答 · 第 N 题」
+    stem: string; // 题干 Markdown
+    timeText: string; // mm:ss 计时
+    revealed: boolean; // 揭示态 → 显示封顶 banner
+    msgs: ChatMsg[]; // 对话消息（模板消息区 → map）
+    times: Record<number, string>; // 消息时间（有才显示）
+    streaming: boolean; // AI 思考中
+    input: string; // 受控输入
+    placeholder: string;
+    disabled: boolean; // 流式/判分中禁用输入
+    scrollRef?: RefObject<HTMLDivElement>; // 内容滚动区（供容器滚到底）
+    onInputChange: (v: string) => void;
+    onSend: () => void;
+    onReveal: () => void;
+    onBack: () => void;
+}
+
+const Frame2807 = ({
+    title,
+    category,
+    modeLabel,
+    stem,
+    timeText,
+    revealed,
+    msgs,
+    times,
+    streaming,
+    input,
+    placeholder,
+    disabled,
+    scrollRef,
+    onInputChange,
+    onSend,
+    onReveal,
+    onBack,
+}: Frame2807Props) => {
+    // 每条 AI 回复的序号（气泡标题「AI 导师 · 追问 N」）
+    const aiSeq = new Map<number, number>();
+    let aiN = 0;
+    for (const m of msgs) {
+        if (m.role === "ai") aiSeq.set(m.id, ++aiN);
+    }
     return (
         <div className="scroll-container">
             <div
@@ -17,6 +65,7 @@ const Frame2807 = () => {
                         >
                             <div className="frame-content-2_809 pixso-relative-flex">
                                 <div
+                                    onClick={onBack}
                                     id="2_810"
                                     className="Pixso-frame-2_810 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex"
                                 >
@@ -39,7 +88,7 @@ const Frame2807 = () => {
                                         id="2_818"
                                         className="Pixso-paragraph-2_818 pixso-relative-auto-size pixso-flex-shrink-0"
                                     >
-                                        {"time.Format 时区语义"}
+                                        {title}
                                     </p>
                                 </div>
                                 <div
@@ -47,6 +96,7 @@ const Frame2807 = () => {
                                     className="Pixso-frame-2_819 pixso-position-relative"
                                 ></div>
                                 <div
+                                    onClick={onReveal}
                                     id="2_820"
                                     className="stroke-wrapper-2_820 pixso-relative-flex-auto-size pixso-flex-shrink-0"
                                 >
@@ -83,22 +133,26 @@ const Frame2807 = () => {
                                         id="2_831"
                                         className="Pixso-paragraph-2_831 pixso-relative-auto-size pixso-flex-shrink-0"
                                     >
-                                        {"04:38"}
+                                        {timeText}
                                     </p>
                                 </div>
-                                <p
-                                    id="2_832"
-                                    className="Pixso-paragraph-2_832 pixso-relative-auto-size pixso-flex-shrink-0"
-                                >
-                                    {"揭示后评分封顶 AGAIN"}
-                                </p>
+                                {revealed && (
+                                    <p
+                                        id="2_832"
+                                        className="Pixso-paragraph-2_832 pixso-relative-auto-size pixso-flex-shrink-0"
+                                    >
+                                        {"揭示后评分封顶 AGAIN"}
+                                    </p>
+                                )}
                             </div>
                         </div>
                     </div>
                 </div>
                 <div
                     id="2_833"
+                    ref={scrollRef}
                     className="Pixso-frame-2_833 pixso-relative-no-shrink pixso-flex-auto-height"
+                    style={{ overflowY: "auto" }}
                 >
                     <div className="frame-content-2_833 pixso-relative-flex">
                         <div
@@ -115,7 +169,7 @@ const Frame2807 = () => {
                                             id="2_836"
                                             className="Pixso-paragraph-2_836 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
-                                            {"开放题 · Go 时间处理"}
+                                            {category}
                                         </p>
                                         <div
                                             id="2_837"
@@ -125,135 +179,108 @@ const Frame2807 = () => {
                                                 id="2_838"
                                                 className="Pixso-paragraph-2_838 pixso-relative-auto-size pixso-flex-shrink-0"
                                             >
-                                                {"简答 · 第 2 题"}
+                                                {modeLabel}
                                             </p>
                                         </div>
                                     </div>
                                 </div>
-                                <p
+                                <div
                                     id="2_839"
                                     className="Pixso-paragraph-2_839 pixso-relative-no-shrink pixso-h-auto"
                                 >
-                                    {
-                                        "请用自己的话解释：为什么同样一段 time.Parse 代码，在本地跑是对的，上线到 UTC 容器后日志却整体少了 8 小时？"
-                                    }
-                                </p>
+                                    <MarkdownLite text={stem} />
+                                </div>
                             </div>
                         </div>
-                        <div
-                            id="2_840"
-                            className="Pixso-frame-2_840 pixso-relative-no-shrink pixso-flex-auto-height"
-                        >
-                            <div className="frame-content-2_840 pixso-relative-flex">
+                        {msgs.map((m) =>
+                            m.role === "me" ? (
                                 <div
-                                    id="2_841"
-                                    className="Pixso-frame-2_841 pixso-relative-no-shrink pixso-flex-auto-height"
+                                    key={m.id}
+                                    className="Pixso-frame-2_840 pixso-relative-no-shrink pixso-flex-auto-height"
                                 >
-                                    <div className="frame-content-2_841 pixso-relative-flex">
-                                        <div
-                                            id="2_842"
-                                            className="Pixso-frame-2_842 pixso-relative-no-shrink pixso-flex-auto-height"
-                                        >
-                                            <div className="frame-content-2_842 pixso-relative-flex">
-                                                <p
-                                                    id="2_843"
-                                                    className="Pixso-paragraph-2_843 pixso-relative-no-shrink pixso-h-auto"
-                                                >
-                                                    {
-                                                        "我猜是 time.Parse 默认用 UTC 当 Location，日志格式化出来就是 UTC 的时间。"
-                                                    }
+                                    <div className="frame-content-2_840 pixso-relative-flex">
+                                        <div className="Pixso-frame-2_841 pixso-relative-no-shrink pixso-flex-auto-height">
+                                            <div className="frame-content-2_841 pixso-relative-flex">
+                                                <div className="Pixso-frame-2_842 pixso-relative-no-shrink pixso-flex-auto-height">
+                                                    <div className="frame-content-2_842 pixso-relative-flex">
+                                                        <p className="Pixso-paragraph-2_843 pixso-relative-no-shrink pixso-h-auto">
+                                                            {m.text}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                {times[m.id] && (
+                                                    <p className="Pixso-paragraph-2_844 pixso-relative-auto-size pixso-flex-shrink-0">
+                                                        {times[m.id]}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div
+                                    key={m.id}
+                                    className="Pixso-frame-2_853 pixso-relative-no-shrink pixso-flex-auto-height"
+                                >
+                                    <div className="frame-content-2_853 pixso-relative-flex">
+                                        <div className="Pixso-frame-2_854 pixso-relative-no-shrink pixso-flex">
+                                            <div className="frame-content-2_854 pixso-relative-flex">
+                                                <div className="Pixso-frame-2_855 pixso-relative-no-shrink pixso-flex">
+                                                    <div className="frame-content-2_855 pixso-relative-flex">
+                                                        <div className="Pixso-vector-2_856 pixso-relative-no-shrink"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="Pixso-frame-2_861 effect-effectcardshadow-2_19 pixso-relative-flex pixso-h-auto">
+                                            <div className="frame-content-2_861 pixso-relative-flex">
+                                                <p className="Pixso-paragraph-2_862 pixso-relative-auto-size pixso-flex-shrink-0">
+                                                    {`AI 导师 · 追问 ${aiSeq.get(m.id) ?? 1}`}
+                                                </p>
+                                                <p className="Pixso-paragraph-2_863 pixso-relative-no-shrink pixso-h-auto">
+                                                    {m.text}
                                                 </p>
                                             </div>
                                         </div>
-                                        <p
-                                            id="2_844"
-                                            className="Pixso-paragraph-2_844 pixso-relative-auto-size pixso-flex-shrink-0"
-                                        >
-                                            {"21:04"}
-                                        </p>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-                        <div
-                            id="2_845"
-                            className="Pixso-frame-2_845 pixso-relative-no-shrink pixso-flex-auto-height"
-                        >
-                            <div className="frame-content-2_845 pixso-relative-flex">
-                                <div
-                                    id="2_846"
-                                    className="Pixso-frame-2_846 pixso-relative-no-shrink"
-                                ></div>
-                                <div
-                                    id="2_847"
-                                    className="Pixso-frame-2_847 pixso-relative-no-shrink"
-                                ></div>
-                                <div
-                                    id="2_848"
-                                    className="Pixso-frame-2_848 pixso-relative-no-shrink"
-                                ></div>
-                                <p
-                                    id="2_849"
-                                    className="Pixso-paragraph-2_849 pixso-relative-auto-size pixso-flex-shrink-0"
-                                >
-                                    {"AI 思考中…"}
-                                </p>
-                                <div
-                                    id="2_850"
-                                    className="Pixso-frame-2_850 pixso-position-relative"
-                                ></div>
-                                <div
-                                    id="2_851"
-                                    className="Pixso-vector-2_851 pixso-relative-no-shrink"
-                                ></div>
-                            </div>
-                        </div>
-                        <div
-                            id="2_853"
-                            className="Pixso-frame-2_853 pixso-relative-no-shrink pixso-flex-auto-height"
-                        >
-                            <div className="frame-content-2_853 pixso-relative-flex">
-                                <div
-                                    id="2_854"
-                                    className="Pixso-frame-2_854 pixso-relative-no-shrink pixso-flex"
-                                >
-                                    <div className="frame-content-2_854 pixso-relative-flex">
-                                        <div
-                                            id="2_855"
-                                            className="Pixso-frame-2_855 pixso-relative-no-shrink pixso-flex"
-                                        >
-                                            <div className="frame-content-2_855 pixso-relative-flex">
-                                                <div
-                                                    id="2_856"
-                                                    className="Pixso-vector-2_856 pixso-relative-no-shrink"
-                                                ></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div
-                                    id="2_861"
-                                    className="Pixso-frame-2_861 effect-effectcardshadow-2_19 pixso-relative-flex pixso-h-auto"
-                                >
-                                    <div className="frame-content-2_861 pixso-relative-flex">
-                                        <p
-                                            id="2_862"
-                                            className="Pixso-paragraph-2_862 pixso-relative-auto-size pixso-flex-shrink-0"
-                                        >
-                                            {"AI 导师 · 追问 2"}
-                                        </p>
-                                        <p
-                                            id="2_863"
-                                            className="Pixso-paragraph-2_863 pixso-relative-no-shrink pixso-h-auto"
-                                        >
-                                            {
-                                                "方向对了。先别急着下结论——如果 Parse 真的默认用 UTC，那 time.ParseInLocation 里的 loc 参数到底改变了哪一步？它影响的是「解析」还是「格式化」？"
-                                            }
-                                        </p>
-                                    </div>
+                            ),
+                        )}
+                        {streaming && (
+                            <div
+                                id="2_845"
+                                className="Pixso-frame-2_845 pixso-relative-no-shrink pixso-flex-auto-height"
+                            >
+                                <div className="frame-content-2_845 pixso-relative-flex">
+                                    <div
+                                        id="2_846"
+                                        className="Pixso-frame-2_846 pixso-relative-no-shrink"
+                                    ></div>
+                                    <div
+                                        id="2_847"
+                                        className="Pixso-frame-2_847 pixso-relative-no-shrink"
+                                    ></div>
+                                    <div
+                                        id="2_848"
+                                        className="Pixso-frame-2_848 pixso-relative-no-shrink"
+                                    ></div>
+                                    <p
+                                        id="2_849"
+                                        className="Pixso-paragraph-2_849 pixso-relative-auto-size pixso-flex-shrink-0"
+                                    >
+                                        {"AI 思考中…"}
+                                    </p>
+                                    <div
+                                        id="2_850"
+                                        className="Pixso-frame-2_850 pixso-position-relative"
+                                    ></div>
+                                    <div
+                                        id="2_851"
+                                        className="Pixso-vector-2_851 pixso-relative-no-shrink"
+                                    ></div>
                                 </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 </div>
                 <div
@@ -267,12 +294,27 @@ const Frame2807 = () => {
                                 className="Pixso-frame-2_865 pixso-relative-flex pixso-h-auto"
                             >
                                 <div className="frame-content-2_865 pixso-relative-flex">
-                                    <p
-                                        id="2_866"
-                                        className="Pixso-paragraph-2_866 pixso-relative-no-shrink pixso-h-auto"
-                                    >
-                                        {"那 loc 只在 Format 的时候生效吗？"}
-                                    </p>
+                                    <input
+                                        value={input}
+                                        disabled={disabled}
+                                        placeholder={placeholder}
+                                        onChange={(e) => onInputChange(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                onSend();
+                                            }
+                                        }}
+                                        style={{
+                                            width: "100%",
+                                            minWidth: 0,
+                                            border: "none",
+                                            outline: "none",
+                                            background: "transparent",
+                                            fontSize: 14,
+                                            color: "var(--color-text-primary)",
+                                        }}
+                                    />
                                     <p
                                         id="2_867"
                                         className="Pixso-paragraph-2_867 pixso-relative-no-shrink pixso-h-auto"
@@ -284,6 +326,7 @@ const Frame2807 = () => {
                             <div
                                 id="2_868"
                                 className="Pixso-frame-2_868 pixso-relative-no-shrink pixso-flex"
+                                style={{ opacity: disabled ? 0.5 : 1 }}
                             >
                                 <div className="frame-content-2_868 pixso-relative-flex">
                                     <div
@@ -309,8 +352,10 @@ const Frame2807 = () => {
                                 </div>
                             </div>
                             <div
+                                onClick={disabled ? undefined : onSend}
                                 id="2_873"
                                 className="Pixso-frame-2_873 pixso-relative-no-shrink pixso-flex"
+                                style={{ opacity: disabled ? 0.5 : 1 }}
                             >
                                 <div className="frame-content-2_873 pixso-relative-flex">
                                     <div
