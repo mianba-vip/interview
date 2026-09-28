@@ -5,6 +5,7 @@ import type {
   DailyTaskView,
   GradeView,
   QuestionView,
+  RehearsalView,
   ReviewView,
   RunSummaryView,
   RunDetailView,
@@ -80,6 +81,50 @@ export function chatStream(
       onEvent: (name) => {
         if (name === 'reveal') h.onReveal?.();
       },
+      onDone: h.onDone,
+      onError: h.onError,
+    },
+  );
+}
+
+export function rehearsalStart(conceptId?: number): Promise<RehearsalView> {
+  return apiFetch<RehearsalView>('/drill/rehearsal/start', {
+    method: 'POST',
+    body: JSON.stringify({ conceptId: conceptId ?? null }),
+  });
+}
+
+export function rehearsalEnd(runId: number): Promise<RehearsalView> {
+  return apiFetch<RehearsalView>(`/drill/rehearsal/${runId}/end`, { method: 'POST' });
+}
+
+export interface RehearsalAnswerHandlers {
+  onResult: (view: RehearsalView) => void;
+  onToken: (text: string) => void;
+  onDone: () => void;
+  onError: (status?: number, message?: string) => void;
+}
+
+/** 模拟面试作答：先 result（判分/下一问），随后逐 token 推讲解。 */
+export function rehearsalAnswer(
+  runId: number,
+  rawAnswer: string,
+  h: RehearsalAnswerHandlers,
+): SseStream {
+  return openSse(
+    `${API_BASE}/api/drill/rehearsal/${runId}/answer`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rawAnswer }),
+    },
+    {
+      onEvent: (name, json) => {
+        if (name === 'result') {
+          try { h.onResult(JSON.parse(json) as RehearsalView); } catch { /* 忽略坏帧 */ }
+        }
+      },
+      onToken: h.onToken,
       onDone: h.onDone,
       onError: h.onError,
     },
