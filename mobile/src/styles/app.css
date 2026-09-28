@@ -780,3 +780,41 @@ textarea {
   font-family: var(--font-mono);
   font-size: 0.88em;
 }
+
+/* ---- MarkdownLite 嵌入行/卡片的间距归一 ---- */
+.detail-row .rv-point {
+  flex: 1;
+  min-width: 0;
+}
+.weak-list li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+.weak-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--coral);
+  margin-top: 9px;
+}
+.rv-md {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+}
+.rv-md .mdlite p,
+.card-sub .mdlite p,
+.review-text .mdlite p {
+  margin: 0 0 0.35em;
+}
+.rv-md .mdlite p:last-child,
+.card-sub .mdlite p:last-child,
+.review-text .mdlite p:last-child {
+  margin-bottom: 0;
+}
+.quote .mdlite p {
+  margin: 0;
+}
