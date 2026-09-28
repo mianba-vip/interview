@@ -29,8 +29,8 @@ const GRADE_CLS: Record<string, string> = {
 /** 复盘页：评级 + 评分点明细 + AI 复盘三件套（总结/思路/口诀）。 */
 export default function ReviewScreen() {
   const { runId: runIdParam } = useParams();
-  const runId = Number(runIdParam);
   const navigate = useNavigate();
+  const runId = Number(runIdParam);
   const { state } = useLocation() as { state: { grade?: GradeView; stem?: string } | null };
       // useLocation 用于读取练习列表带来的 grade 快照
 
@@ -78,7 +78,7 @@ export default function ReviewScreen() {
   return (
     <div className="screen screen-immersive">
       <div className="immersive-topbar">
-        <button className="back-btn" onClick={() => navigate('/practice')}>
+        <button className="back-btn" onClick={() => navigate(-1)}>
           <ChevronLeft size={22} />
         </button>
         <span style={{ fontWeight: 800 }}>复盘</span>
@@ -140,7 +140,6 @@ export default function ReviewScreen() {
       )}
 
       {err && <div className="form-err">{err}</div>}
-      <Link to="/tasks" className="back-link">返回今日任务</Link>
     </div>
   );
 }

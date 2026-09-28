@@ -818,3 +818,28 @@ textarea {
 .quote .mdlite p {
   margin: 0;
 }
+
+/* ---- 练习 Tab ---- */
+.hint-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: var(--primary-soft);
+  border-radius: var(--r-card);
+  padding: 16px;
+  margin-top: 16px;
+}
+.hint-icon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ongoing-card {
+  border: 2px solid var(--primary);
+}
