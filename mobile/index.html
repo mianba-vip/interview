@@ -8,6 +8,32 @@
     />
     <meta name="theme-color" content="#FAF7F2" />
     <title>面霸 · AI 学习</title>
+    <!-- 开发期错误缓冲：崩溃先于任何模块执行时也能把错误留住（写进 sessionStorage，刷新后可读） -->
+    <script>
+      window.__preerrs = [];
+      function mbSaveErr(m) {
+        window.__preerrs.push(m);
+        try { sessionStorage.setItem('mb.lastError', m); } catch (e) {}
+      }
+      window.addEventListener('error', function (e) {
+        mbSaveErr((e.message || '') + ' @ ' + (e.filename || '') + ':' + (e.lineno || '') + '\n' + ((e.error && e.error.stack) || ''));
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        mbSaveErr('unhandledrejection: ' + ((e.reason && e.reason.stack) || String(e.reason)));
+      });
+      (function (orig) {
+        console.error = function () {
+          var parts = [];
+          for (var i = 0; i < arguments.length; i++) {
+            var a = arguments[i];
+            try { parts.push(typeof a === 'string' ? a : (a && a.stack) || JSON.stringify(a)); }
+            catch (e) { parts.push(String(a)); }
+          }
+          mbSaveErr('console.error: ' + parts.join(' '));
+          return orig.apply(console, arguments);
+        };
+      })(console.error);
+    </script>
   </head>
   <body>
     <div id="root"></div>

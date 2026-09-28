@@ -1,4 +1,5 @@
 import "@/styles/Frame2394.css";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 /** 任务状态位文案（卡片右侧）。 */
@@ -8,6 +9,14 @@ const statusText = (s: string) =>
 const btnText = (s: string) =>
     s === "READY" ? "开始练习" : s === "PENDING" ? "生成中…" : "已完成";
 
+/** 懒渲染一页（任务卡 / 知识点行通用步长）。 */
+const PAGE = 10;
+/** 知识点清单一页行数。 */
+const PT_PAGE = 30;
+/** 掌握度圆点：2 薄荷 / 1 柠檬 / 0 珊瑚。 */
+const DOT_COLOR = ["var(--color-brand-coral)", "var(--color-brand-lemon)", "var(--color-brand-mint)"];
+const dotColor = (masteryLevel: number) => DOT_COLOR[Math.max(0, Math.min(2, masteryLevel))];
+
 export interface HomeTaskItem {
     id: number;
     kind: "REVIEW" | "NEW";
@@ -15,6 +24,13 @@ export interface HomeTaskItem {
     status: string;
     conceptId: number;
     subPoint: string | null;
+}
+
+/** 知识点清单一行（来自当前方向 concepts，扁平化后懒渲染）。 */
+export interface HomePointItem {
+    layer: number;
+    name: string;
+    masteryLevel: number;
 }
 
 export interface Frame2394Props {
@@ -30,10 +46,154 @@ export interface Frame2394Props {
     taskSummary: string;
     tasks: HomeTaskItem[];
     debtText: string;
-    onTaskClick?: (id: number) => void;
-    onStart?: () => void;
-    onLesson?: (conceptId: number, subPoint: string | null) => void;
+    /** 知识点清单：当前方向全部层级；拿不到就不传，整卡不渲染 */
+    points?: HomePointItem[];
+    /** 卡片主体 / 「先听讲解 →」：进讲解页（带 taskId，讲完可直接开题） */
+    onLesson?: (conceptId: number, subPoint: string | null, taskId: number) => void;
+    /** 卡内「开始练习」：直接开题 */
+    onStartTask?: (id: number) => void;
 }
+
+type PointRow =
+    | { kind: "head"; layer: number; count: number }
+    | { kind: "pt"; name: string; masteryLevel: number };
+
+/** 知识点按 layer 分组扁平化：小节头 + 知识点行。 */
+function buildPointRows(points?: HomePointItem[]): PointRow[] {
+    const rows: PointRow[] = [];
+    if (!points?.length) return rows;
+    const layers = [...new Set(points.map((p) => p.layer))].sort((a, b) => a - b);
+    for (const l of layers) {
+        const list = points.filter((p) => p.layer === l);
+        rows.push({ kind: "head", layer: l, count: list.length });
+        for (const p of list) rows.push({ kind: "pt", name: p.name, masteryLevel: p.masteryLevel });
+    }
+    return rows;
+}
+
+/** 底部哨兵懒加载：root = 可滚中栏 2_415（挂载后取，取不到退回视口）；version 变了重挂观察器继续补一页。 */
+function useSentinel(onHit: () => void, version: number) {
+    const [el, setEl] = useState<HTMLDivElement | null>(null);
+    const [root, setRoot] = useState<Element | null>(null);
+    const hitRef = useRef(onHit);
+    hitRef.current = onHit;
+    useEffect(() => {
+        setRoot(document.getElementById("2_415"));
+    }, []);
+    useEffect(() => {
+        if (!el) return;
+        const io = new IntersectionObserver(
+            (entries) => {
+                if (entries[0]?.isIntersecting) hitRef.current();
+            },
+            { root, rootMargin: "300px" },
+        );
+        io.observe(el);
+        return () => io.disconnect();
+    }, [el, root, version]);
+    return setEl;
+}
+
+/** 小节头：结构与样式复用模板「今日任务」标题行（section 标题 + 右侧计数）。 */
+const sectionRow = (title: string, count: string) => (
+    <div className="Pixso-frame-2_481 pixso-relative-no-shrink pixso-flex-auto-height">
+        <div className="frame-content-2_481 pixso-relative-flex">
+            <p className="Pixso-paragraph-2_482 pixso-relative-auto-size pixso-flex-shrink-0">{title}</p>
+            <p className="Pixso-paragraph-2_483 pixso-relative-auto-size pixso-flex-shrink-0">{count}</p>
+        </div>
+    </div>
+);
+
+/** 今日任务卡：整卡→讲解页；「开始练习」直接开题；「先听讲解 →」同 state 进讲解页。 */
+const TaskCard = ({
+    t,
+    onLesson,
+    onStartTask,
+}: {
+    t: HomeTaskItem;
+    onLesson?: Frame2394Props["onLesson"];
+    onStartTask?: Frame2394Props["onStartTask"];
+}) => (
+    <div
+        onClick={() => onLesson?.(t.conceptId, t.subPoint, t.id)}
+        id="2_484"
+        className="Pixso-frame-2_484 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex-auto-height"
+    >
+        <div className="frame-content-2_484 pixso-relative-flex">
+            <div
+                id="2_485"
+                className="Pixso-frame-2_485 pixso-relative-no-shrink pixso-flex-auto-height"
+            >
+                <div className="frame-content-2_485 pixso-relative-flex">
+                    <div
+                        id="2_486"
+                        className="Pixso-frame-2_486 pixso-relative-flex-auto-size pixso-flex-shrink-0"
+                    >
+                        <div
+                            id="2_487"
+                            className="Pixso-vector-2_487 pixso-relative-no-shrink"
+                        ></div>
+                        <p
+                            id="2_490"
+                            className="Pixso-paragraph-2_490 pixso-relative-auto-size pixso-flex-shrink-0"
+                        >
+                            {t.kind === "REVIEW" ? "复习" : "新学"}
+                        </p>
+                    </div>
+                    <p
+                        id="2_491"
+                        className="Pixso-paragraph-2_491 pixso-relative-auto-size pixso-flex-shrink-0"
+                    >
+                        {statusText(t.status)}
+                    </p>
+                </div>
+            </div>
+            <p
+                id="2_492"
+                className="Pixso-paragraph-2_492 pixso-relative-no-shrink pixso-h-auto"
+                style={{
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                }}
+            >
+                {t.title}
+            </p>
+            <p
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onLesson?.(t.conceptId, t.subPoint, t.id);
+                }}
+                style={{
+                    fontSize: "var(--font-caption)",
+                    fontWeight: 600,
+                    color: "var(--color-brand-purple)",
+                    cursor: "pointer",
+                }}
+            >
+                {"先听讲解 →"}
+            </p>
+            <div
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onStartTask?.(t.id);
+                }}
+                id="2_493"
+                className="Pixso-frame-2_493 pixso-relative-no-shrink pixso-flex"
+            >
+                <div className="frame-content-2_493 pixso-relative-flex">
+                    <p
+                        id="2_494"
+                        className="Pixso-paragraph-2_494 pixso-relative-auto-size pixso-flex-shrink-0"
+                    >
+                        {btnText(t.status)}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+);
 
 const Frame2394 = ({
     name,
@@ -48,12 +208,32 @@ const Frame2394 = ({
     taskSummary,
     tasks,
     debtText,
-    onTaskClick,
-    onStart,
+    points,
     onLesson,
+    onStartTask,
 }: Frame2394Props) => {
     const navigate = useNavigate();
     const greet = new Date().getHours() < 12 ? "早上好" : "晚上好";
+    // 今日任务分组懒渲染：复习在前，先满 10 张再补新学，触底追加
+    const [taskLimit, setTaskLimit] = useState(PAGE);
+    const reviewTasks = tasks.filter((t) => t.kind === "REVIEW");
+    const newTasks = tasks.filter((t) => t.kind !== "REVIEW");
+    const shownReview = reviewTasks.slice(0, taskLimit);
+    const shownNew = newTasks.slice(0, Math.max(0, taskLimit - shownReview.length));
+    const taskSentinel = useSentinel(
+        () => setTaskLimit((n) => (n < tasks.length ? n + PAGE : n)),
+        taskLimit,
+    );
+    // 知识点清单：折叠/展开，展开后 30 行一页懒渲染
+    const [ptsOpen, setPtsOpen] = useState(false);
+    const [ptLimit, setPtLimit] = useState(PT_PAGE);
+    const pointRows = buildPointRows(points);
+    const pointSentinel = useSentinel(
+        () => setPtLimit((n) => (n < pointRows.length ? n + PT_PAGE : n)),
+        ptLimit,
+    );
+    const ptLayers = [...new Set((points ?? []).map((p) => p.layer))].sort((a, b) => a - b);
+    const layerText = ptLayers.length ? `L${ptLayers[0]}–L${ptLayers[ptLayers.length - 1]}` : "";
     return (
         <div className="scroll-container">
             <div
@@ -370,6 +550,61 @@ const Frame2394 = ({
                                 </div>
                             </div>
                         </div>
+                        {points && points.length > 0 && (
+                        <div className="Pixso-frame-2_438 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex-auto-height">
+                            <div className="frame-content-2_438 pixso-relative-flex">
+                                <div
+                                    onClick={() => setPtsOpen((v) => !v)}
+                                    className="Pixso-frame-2_439 pixso-relative-no-shrink pixso-flex-auto-height"
+                                    style={{ cursor: "pointer" }}
+                                >
+                                    <div className="frame-content-2_439 pixso-relative-flex">
+                                        <p className="Pixso-paragraph-2_440 pixso-relative-auto-size pixso-flex-shrink-0">
+                                            {"知识点清单"}
+                                        </p>
+                                        <p className="Pixso-paragraph-2_446 pixso-relative-auto-size pixso-flex-shrink-0">
+                                            {`${points.length} 个 · ${layerText}`}
+                                        </p>
+                                    </div>
+                                </div>
+                                {ptsOpen && (
+                                <>
+                                    {pointRows.slice(0, ptLimit).map((r, i) =>
+                                        r.kind === "head" ? (
+                                            <div
+                                                key={`L${r.layer}`}
+                                                className="frame-content-2_439 pixso-relative-flex"
+                                            >
+                                                <p className="Pixso-paragraph-2_482 pixso-relative-auto-size pixso-flex-shrink-0">
+                                                    {`L${r.layer}`}
+                                                </p>
+                                                <p className="Pixso-paragraph-2_483 pixso-relative-auto-size pixso-flex-shrink-0">
+                                                    {`${r.count} 个`}
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div
+                                                key={`P${i}`}
+                                                className="frame-content-2_439 pixso-relative-flex"
+                                            >
+                                                <p className="Pixso-paragraph-2_492 pixso-relative-auto-size">{r.name}</p>
+                                                <span
+                                                    style={{
+                                                        width: 8,
+                                                        height: 8,
+                                                        borderRadius: "50%",
+                                                        background: dotColor(r.masteryLevel),
+                                                    }}
+                                                />
+                                            </div>
+                                        ),
+                                    )}
+                                    <div ref={pointSentinel} />
+                                </>
+                                )}
+                            </div>
+                        </div>
+                        )}
                         <div
                             id="2_481"
                             className="Pixso-frame-2_481 pixso-relative-no-shrink pixso-flex-auto-height"
@@ -389,88 +624,15 @@ const Frame2394 = ({
                                 </p>
                             </div>
                         </div>
-                        {tasks.map((t) => (
-                        <div
-                            key={t.id}
-                            onClick={() => onTaskClick?.(t.id)}
-                            id="2_484"
-                            className="Pixso-frame-2_484 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex-auto-height"
-                        >
-                            <div className="frame-content-2_484 pixso-relative-flex">
-                                <div
-                                    id="2_485"
-                                    className="Pixso-frame-2_485 pixso-relative-no-shrink pixso-flex-auto-height"
-                                >
-                                    <div className="frame-content-2_485 pixso-relative-flex">
-                                        <div
-                                            id="2_486"
-                                            className="Pixso-frame-2_486 pixso-relative-flex-auto-size pixso-flex-shrink-0"
-                                        >
-                                            <div
-                                                id="2_487"
-                                                className="Pixso-vector-2_487 pixso-relative-no-shrink"
-                                            ></div>
-                                            <p
-                                                id="2_490"
-                                                className="Pixso-paragraph-2_490 pixso-relative-auto-size pixso-flex-shrink-0"
-                                            >
-                                                {t.kind === "REVIEW" ? "复习" : "新学"}
-                                            </p>
-                                        </div>
-                                        <p
-                                            id="2_491"
-                                            className="Pixso-paragraph-2_491 pixso-relative-auto-size pixso-flex-shrink-0"
-                                        >
-                                            {statusText(t.status)}
-                                        </p>
-                                    </div>
-                                </div>
-                                <p
-                                    id="2_492"
-                                    className="Pixso-paragraph-2_492 pixso-relative-no-shrink pixso-h-auto"
-                                    style={{
-                                        display: "-webkit-box",
-                                        WebkitLineClamp: 2,
-                                        WebkitBoxOrient: "vertical",
-                                        overflow: "hidden",
-                                    }}
-                                >
-                                    {t.title}
-                                </p>
-                                <p
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onLesson?.(t.conceptId, t.subPoint);
-                                    }}
-                                    style={{
-                                        fontSize: "var(--font-caption)",
-                                        fontWeight: 600,
-                                        color: "var(--color-brand-purple)",
-                                        cursor: "pointer",
-                                    }}
-                                >
-                                    {"先听讲解 →"}
-                                </p>
-                                <div
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onStart?.();
-                                    }}
-                                    id="2_493"
-                                    className="Pixso-frame-2_493 pixso-relative-no-shrink pixso-flex"
-                                >
-                                    <div className="frame-content-2_493 pixso-relative-flex">
-                                        <p
-                                            id="2_494"
-                                            className="Pixso-paragraph-2_494 pixso-relative-auto-size pixso-flex-shrink-0"
-                                        >
-                                            {btnText(t.status)}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        {reviewTasks.length > 0 && sectionRow("复习", `${reviewTasks.length} 项`)}
+                        {shownReview.map((t) => (
+                            <TaskCard key={t.id} t={t} onLesson={onLesson} onStartTask={onStartTask} />
                         ))}
+                        {newTasks.length > 0 && sectionRow("新学", `${newTasks.length} 项`)}
+                        {shownNew.map((t) => (
+                            <TaskCard key={t.id} t={t} onLesson={onLesson} onStartTask={onStartTask} />
+                        ))}
+                        <div ref={taskSentinel} />
                         <div
                             id="2_537"
                             className="Pixso-frame-2_537 pixso-relative-no-shrink pixso-flex-auto-height"

@@ -45,12 +45,21 @@ function dueText(dueAt: string | null): string {
 const Frame21242 = ({ cards, due, corpus }: SedimentViewProps) => {
     const navigate = useNavigate();
     const [seg, setSeg] = useState<Seg>("cards");
-    const todayCount = due.filter((c) => c.dueAt?.slice(0, 10) === dayOf(new Date())).length;
-    /** 分段点击：切换激活态并滚到对应章节 */
-    const jump = (s: Seg) => {
-        setSeg(s);
-        document.getElementById(`sec-${s}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    };
+    const [searchText, setSearchText] = useState("");
+    /** 搜索关键字（大小写不敏感）；空串不过滤 */
+    const kw = searchText.trim().toLowerCase();
+    const hit = (s: string | null | undefined) => !kw || (s ?? "").toLowerCase().includes(kw);
+    /** 三段各自过滤：卡按题干/答案/标签，到期按题干，资料按名称/主题 */
+    const shownCards = cards.filter((c) => hit(c.question) || hit(c.answer) || hit(c.tags));
+    const shownDue = due.filter((c) => hit(c.question));
+    const shownCorpus = corpus.filter((f) => hit(f.name) || (f.topics ?? []).some((t) => hit(t)));
+    const todayCount = shownDue.filter((c) => c.dueAt?.slice(0, 10) === dayOf(new Date())).length;
+    /** 空结果提示 */
+    const emptyNote = (
+        <p className="Pixso-paragraph-2_1266 pixso-relative-auto-size pixso-flex-shrink-0">
+            {"没有匹配的内容"}
+        </p>
+    );
     return (
         <div className="scroll-container">
             <div
@@ -144,12 +153,21 @@ const Frame21242 = ({ cards, due, corpus }: SedimentViewProps) => {
                                     id="2_1268"
                                     className="Pixso-vector-2_1268 pixso-relative-no-shrink"
                                 ></div>
-                                <p
+                                <input
                                     id="2_1271"
                                     className="Pixso-paragraph-2_1271 pixso-position-relative pixso-h-auto"
-                                >
-                                    {"搜索知识卡 / 资料 / 概念…"}
-                                </p>
+                                    value={searchText}
+                                    onChange={(e) => setSearchText(e.target.value)}
+                                    placeholder="搜索知识卡 / 资料 / 概念…"
+                                    style={{
+                                        border: "none",
+                                        outline: "none",
+                                        background: "transparent",
+                                        padding: 0,
+                                        // 空态保留模板的浅灰占位色；有字才转正文色，否则输入不可读
+                                        color: searchText ? "var(--color-text-primary)" : undefined,
+                                    }}
+                                />
                             </div>
                         </div>
                         <div
@@ -158,7 +176,7 @@ const Frame21242 = ({ cards, due, corpus }: SedimentViewProps) => {
                         >
                             <div className="frame-content-2_1272 pixso-relative-flex">
                                 <div
-                                    onClick={() => jump("cards")}
+                                    onClick={() => setSeg("cards")}
                                     style={{ outline: seg === "cards" ? "2px solid var(--color-brand-purple)" : "none", outlineOffset: 2 }}
                                     id="2_1273"
                                     className="Pixso-frame-2_1273 pixso-relative-flex-auto-size pixso-flex-shrink-0"
@@ -171,7 +189,7 @@ const Frame21242 = ({ cards, due, corpus }: SedimentViewProps) => {
                                     </p>
                                 </div>
                                 <div
-                                    onClick={() => jump("due")}
+                                    onClick={() => setSeg("due")}
                                     style={{ outline: seg === "due" ? "2px solid var(--color-brand-purple)" : "none", outlineOffset: 2 }}
                                     id="2_1275"
                                     className="stroke-wrapper-2_1275 pixso-relative-flex-auto-size pixso-flex-shrink-0"
@@ -187,7 +205,7 @@ const Frame21242 = ({ cards, due, corpus }: SedimentViewProps) => {
                                     <div className="stroke-2_1275"></div>
                                 </div>
                                 <div
-                                    onClick={() => jump("corpus")}
+                                    onClick={() => setSeg("corpus")}
                                     style={{ outline: seg === "corpus" ? "2px solid var(--color-brand-purple)" : "none", outlineOffset: 2 }}
                                     id="2_1277"
                                     className="stroke-wrapper-2_1277 pixso-relative-flex-auto-size pixso-flex-shrink-0"
@@ -204,10 +222,11 @@ const Frame21242 = ({ cards, due, corpus }: SedimentViewProps) => {
                                 </div>
                             </div>
                         </div>
-                        {cards.map((c, i) => (
+                        {seg === "cards" && (
+                        <>
+                        {shownCards.map((c) => (
                         <div
                             key={c.id}
-                            id={i === 0 ? "sec-cards" : undefined}
                             className="Pixso-frame-2_1279 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex-auto-height"
                         >
                             <div className="frame-content-2_1279 pixso-relative-flex">
@@ -265,8 +284,12 @@ const Frame21242 = ({ cards, due, corpus }: SedimentViewProps) => {
                             </div>
                         </div>
                         ))}
+                        {shownCards.length === 0 && emptyNote}
+                        </>
+                        )}
+                        {seg === "due" && (
+                        <>
                         <div
-                            id="sec-due"
                             className="Pixso-frame-2_1320 pixso-relative-no-shrink pixso-flex-auto-height"
                         >
                             <div className="frame-content-2_1320 pixso-relative-flex">
@@ -284,7 +307,7 @@ const Frame21242 = ({ cards, due, corpus }: SedimentViewProps) => {
                                 </p>
                             </div>
                         </div>
-                        {due.map((c) => (
+                        {shownDue.map((c) => (
                         <div
                             key={c.id}
                             className="Pixso-frame-2_1323 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex-auto-height"
@@ -323,8 +346,12 @@ const Frame21242 = ({ cards, due, corpus }: SedimentViewProps) => {
                             </div>
                         </div>
                         ))}
+                        {shownDue.length === 0 && emptyNote}
+                        </>
+                        )}
+                        {seg === "corpus" && (
+                        <>
                         <div
-                            id="sec-corpus"
                             className="Pixso-frame-2_1335 pixso-relative-no-shrink pixso-flex-auto-height"
                         >
                             <div className="frame-content-2_1335 pixso-relative-flex">
@@ -338,11 +365,11 @@ const Frame21242 = ({ cards, due, corpus }: SedimentViewProps) => {
                                     id="2_1337"
                                     className="Pixso-paragraph-2_1337 pixso-relative-auto-size pixso-flex-shrink-0"
                                 >
-                                    {`${corpus.length} 份资料`}
+                                    {`${shownCorpus.length} 份资料`}
                                 </p>
                             </div>
                         </div>
-                        {corpus.map((f) => (
+                        {shownCorpus.map((f) => (
                         <div
                             key={f.id}
                             className="Pixso-frame-2_1338 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex-auto-height"
@@ -392,6 +419,9 @@ const Frame21242 = ({ cards, due, corpus }: SedimentViewProps) => {
                             </div>
                         </div>
                         ))}
+                        {shownCorpus.length === 0 && emptyNote}
+                        </>
+                        )}
                         <div
                             onClick={() => console.warn("上传资料：暂无上传接口")}
                             id="2_1364"

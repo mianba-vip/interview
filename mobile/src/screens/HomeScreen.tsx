@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Frame2394 from "@/views/Frame2394";
 import { debtCount, history, profile, startTask, today } from "@/api/drill";
+import { listPlans } from "@/api/plan";
+import type { PlanView } from "@/api/plan";
+import { readActivePlanId } from "@/lib/activePlan";
 import { userApi } from "@/api/user";
 import type { DailyTaskView, RunSummaryView, TopicProfile } from "@/api/types";
 
@@ -39,6 +42,7 @@ function cardTitle(conceptName: string, stem: string | null): string {
 const HomeScreen = () => {
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<DailyTaskView[]>([]);
+  const [plans, setPlans] = useState<PlanView[]>([]);
   const [topics, setTopics] = useState<TopicProfile[]>([]);
   const [name, setName] = useState("");
   const [debt, setDebt] = useState(0);
@@ -60,11 +64,29 @@ const HomeScreen = () => {
       .finally(() => setLoading(false));
   }, []);
 
+  // 方向列表：拿不到就留空 → 知识点清单整卡不渲染
+  useEffect(() => {
+    listPlans()
+      .then(setPlans)
+      .catch(() => setPlans([]));
+  }, []);
+
   const concepts = topics.flatMap((t) => t.concepts);
   const mastered = concepts.filter((c) => c.masteryLevel >= 2).length;
   const inProgress = concepts.filter((c) => c.masteryLevel === 1).length;
   const notMastered = Math.max(0, concepts.length - mastered - inProgress);
   const progress = concepts.length ? Math.round((mastered / concepts.length) * 100) : 0;
+
+  /** 当前方向：readActivePlanId 命中列表，否则取第一个 */
+  const activeId = readActivePlanId();
+  const dirPlan = plans.find((p) => p.id === activeId) ?? plans[0] ?? null;
+  /** 按方向过滤任务；方向对不上时全量兜底（防止方向不匹配时首页空掉） */
+  const hitId = dirPlan && tasks.some((t) => t.planId === dirPlan.id) ? dirPlan.id : null;
+  const shownTasks = hitId === null ? tasks : tasks.filter((t) => t.planId === hitId);
+  /** 知识点清单：当前方向全部层级；方向拿不到就不传，整卡不渲染 */
+  const points = dirPlan?.concepts.length
+    ? dirPlan.concepts.map((c) => ({ layer: c.layer, name: c.name, masteryLevel: c.masteryLevel }))
+    : undefined;
 
   /** 开题 → 练习页 */
   const openTask = async (taskId: number) => {
@@ -77,29 +99,14 @@ const HomeScreen = () => {
     }
   };
 
-  /** 卡片点击：点哪个开哪个；任务列表为空兜底去练习 Tab */
-  const onTaskClick = (id: number) => {
-    const t = tasks.find((x) => x.id === id);
-    if (!t) {
-      navigate("/practice");
-      return;
-    }
-    void openTask(t.id);
+  /** 卡内「开始练习」：直接开这张卡的题 */
+  const onStartTask = (id: number) => {
+    void openTask(id);
   };
 
-  /** 「开始练习」主按钮：开第一个可开始的任务，无可开任务就去练习 Tab */
-  const onStart = () => {
-    const target = tasks.find((t) => t.status === "READY") ?? tasks.find((t) => t.status !== "DONE");
-    if (!target) {
-      navigate("/practice");
-      return;
-    }
-    void openTask(target.id);
-  };
-
-  /** 卡片「先听讲解 →」：带概念与子点进讲解页 */
-  const onLesson = (conceptId: number, subPoint: string | null) => {
-    navigate("/lesson", { state: { conceptId, subPoint: subPoint ?? undefined } });
+  /** 卡片主体 /「先听讲解 →」：带概念、子点与任务进讲解页 */
+  const onLesson = (conceptId: number, subPoint: string | null, taskId: number) => {
+    navigate("/lesson", { state: { conceptId, subPoint: subPoint ?? undefined, taskId } });
   };
 
   if (loading) {
@@ -121,7 +128,7 @@ const HomeScreen = () => {
     );
   }
 
-  const taskSummary = `${tasks.length} 项 · 约 ${tasks.length * 8} 分钟`;
+  const taskSummary = `${shownTasks.length} 项 · 约 ${shownTasks.length * 8} 分钟`;
 
   return (
     <>
@@ -145,7 +152,7 @@ const HomeScreen = () => {
       <Frame2394
         name={name}
         streakDays={streak}
-        direction={tasks[0]?.planTitle || "Go 后端工程师"}
+        direction={dirPlan?.title || tasks[0]?.planTitle || "Go 后端工程师"}
         mastered={mastered}
         inProgress={inProgress}
         notMastered={notMastered}
@@ -153,7 +160,7 @@ const HomeScreen = () => {
         unlockHint="L1 达标 50% 解锁 L2"
         progress={progress}
         taskSummary={taskSummary}
-        tasks={tasks.map((t) => ({
+        tasks={shownTasks.map((t) => ({
           id: t.id,
           kind: t.kind,
           // 卡片标题用概念名（题干是整段 markdown，会把卡片撑成文字墙）
@@ -162,9 +169,9 @@ const HomeScreen = () => {
           conceptId: t.conceptId,
           subPoint: t.subPoint,
         }))}
+        points={points}
         debtText={debt > 0 ? `${debt} 条未闭环作答等待收尾` : "暂无未闭环作答"}
-        onTaskClick={onTaskClick}
-        onStart={onStart}
+        onStartTask={onStartTask}
         onLesson={onLesson}
       />
     </>

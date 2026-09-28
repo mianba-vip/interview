@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import Frame2965, { type LessonMsg, type SubPointItem } from "@/views/Frame2965";
 import { lessonChat, lessonQa, lessonStream, outline, subPointPass } from "@/api/lesson";
+import { startTask } from "@/api/drill";
 import type { OutlineView } from "@/api/lesson";
 import type { SseStream } from "@/api/sse";
 import { parsePillFlow, type FlowNode } from "@/components/PillFlow";
@@ -62,11 +63,15 @@ const splitFlow = (src: string): { text: string; flow: FlowNode[] | null } => {
 /** 讲解页：入参 conceptId/subPoint（state 或 ?query），首载大纲 → 逐子点流式讲解 + 答疑。 */
 const LessonScreen = () => {
   const navigate = useNavigate();
-  const { state } = useLocation() as { state: { conceptId?: number; subPoint?: string } | null };
+  const { state } = useLocation() as {
+    state: { conceptId?: number; subPoint?: string; taskId?: number } | null;
+  };
   const [searchParams] = useSearchParams();
 
   const conceptId = Number(state?.conceptId ?? searchParams.get("conceptId") ?? 0);
   const stateSub = state?.subPoint ?? searchParams.get("subPoint") ?? "";
+  /** 首页任务卡带来的题：学完直接开这道题 */
+  const taskId = Number(state?.taskId ?? 0);
   const valid = Number.isFinite(conceptId) && conceptId > 0;
 
   const [ol, setOl] = useState<OutlineView | null>(null);
@@ -230,7 +235,12 @@ const LessonScreen = () => {
     setErr("");
     try {
       await subPointPass(conceptId, active, true);
-      navigate("/practice");
+      if (taskId > 0) {
+        const q = await startTask(taskId);
+        navigate(`/run/${q.runId}`);
+      } else {
+        navigate("/practice");
+      }
     } catch (e) {
       setPassBusy(false);
       setErr(e instanceof Error ? e.message : "标记失败，请重试");
