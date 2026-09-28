@@ -687,6 +687,7 @@ const Frame21403 = ({
                     </div>
                 </div>
                 <div
+                    style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 60 }}
                     id="2_1546"
                     className="Pixso-frame-2_1546 pixso-relative-no-shrink pixso-flex-auto-height"
                 >

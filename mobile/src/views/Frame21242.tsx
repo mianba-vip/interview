@@ -417,6 +417,7 @@ const Frame21242 = ({ cards, due, corpus }: SedimentViewProps) => {
                     </div>
                 </div>
                 <div
+                    style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 60 }}
                     id="2_1370"
                     className="Pixso-frame-2_1370 pixso-relative-no-shrink pixso-flex-auto-height"
                 >

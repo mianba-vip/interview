@@ -33,6 +33,25 @@ select {
   display: none;
 }
 
+/* Pixso 导出把每个根帧写死 height:844 + overflow:hidden——静态稿刚好装得下，
+   接上真实数据（长题干/多任务/多卡片）必然超高并被裁掉，连底部 TabBar 都会被裁没。
+   这里放开根帧高度（保底 844 手机高度），整页滚动交给 .scroll-container。 */
+.scroll-container > div {
+  height: auto !important;
+  min-height: 844px;
+  overflow: visible !important;
+}
+
+/* TabBar 改为 fixed 吸底后不再占页面流高度，给 5 个 Tab 页根帧留出底部空间，
+   避免最后一条内容被浮条盖住。 */
+.Pixso-frame-2_394,
+.Pixso-frame-2_579,
+.Pixso-frame-2_1051,
+.Pixso-frame-2_1242,
+.Pixso-frame-2_1403 {
+  padding-bottom: 110px;
+}
+
 /* ---- 后端 Markdown 渲染（MarkdownLite） ---- */
 .mdlite {
   word-break: break-word;
