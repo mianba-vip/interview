@@ -17,6 +17,9 @@ public interface DrillRunRepository extends JpaRepository<DrillRun, Long> {
     // 物理闸门读取（按 mode 区分主线）：避免把活跃 REHEARSAL 当 LEARN 新题返回
     List<DrillRun> findByUserIdAndStatusInAndMode(Long userId, List<DrillRunStatus> statuses, DrillMode mode);
 
+    /** 全局唯一 active 闸门（V28：每用户最多一个 READY/ANSWERING，不分 mode）的前置检查用。 */
+    List<DrillRun> findByUserIdAndStatusIn(Long userId, List<DrillRunStatus> statuses);
+
     List<DrillRun> findByUserIdAndPlanIdAndPurposeAndStatus(
             Long userId, Long planId, interview.homegrown.modules.drill.domain.DrillPurpose purpose,
             DrillRunStatus status);
