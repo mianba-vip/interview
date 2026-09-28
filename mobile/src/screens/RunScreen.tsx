@@ -1,25 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Loader2, Send } from 'lucide-react';
 import { chatStream, finish as finishApi } from '../api/drill';
 import type { ChatMsg, QuestionView } from '../api/types';
 import { MarkdownLite } from '../components/MarkdownLite';
 
-
-
 interface LocationState {
   view?: QuestionView;
   messages?: ChatMsg[];
-}
-
-/** 从题干解析 A-D 选项行（仅 CHOICE 题）：「A. 选项文本」→ {key,text}。 */
-function parseOptions(stem: string): { key: string; text: string }[] {
-  const out: { key: string; text: string }[] = [];
-  for (const line of stem.split('\n')) {
-    const m = /^\s*([A-D])[.、．)]\s*(.+?)\s*$/.exec(line);
-    if (m) out.push({ key: m[1], text: m[2] });
-  }
-  return out.length >= 2 ? out : [];
 }
 
 /** 沉浸式答题页：题干 →（选择题点选 / 文本+语音占位）→ chat SSE 判定流 → 结束并评分。 */
@@ -39,11 +27,6 @@ export default function RunScreen() {
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [msgs]);
-
-  const options = useMemo(
-    () => (view?.responseFormat === 'CHOICE' ? parseOptions(view.stem) : []),
-    [view],
-  );
 
   if (!view) {
     return (
@@ -147,25 +130,11 @@ export default function RunScreen() {
       </div>
 
       <div className="inputbar">
-        {options.length > 0 && (
-          <div className="option-list">
-            {options.map((o) => (
-              <button
-                key={o.key}
-                className={'option-card' + (input.trim().toUpperCase() === o.key ? ' picked' : '')}
-                onClick={() => setInput(o.key)}
-              >
-                <span className="opt-key">{o.key}</span>
-                <span className="opt-text">{o.text}</span>
-              </button>
-            ))}
-          </div>
-        )}
         <div className="inputbar-row">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={options.length > 0 ? '输入选项字母，如 B' : '输入你的回答…'}
+            placeholder={view.responseFormat === 'CHOICE' ? '输入选项字母，如 B' : '输入你的回答…'}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
