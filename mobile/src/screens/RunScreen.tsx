@@ -32,7 +32,7 @@ export default function RunScreen() {
     return (
       <div className="screen screen-immersive">
         <div className="immersive-topbar">
-          <button className="back-btn" onClick={() => navigate('/tasks')}>
+          <button className="back-btn" onClick={() => navigate(-1)}>
             <ChevronLeft size={22} />
           </button>
         </div>
