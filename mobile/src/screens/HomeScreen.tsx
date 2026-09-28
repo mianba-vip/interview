@@ -24,6 +24,17 @@ function streakOf(list: RunSummaryView[]): number {
   return n;
 }
 
+/** 卡片标题：概念名优先；兜底取题干首个非空行（去 markdown 记号、截 40 字），绝不整段上卡。 */
+function cardTitle(conceptName: string, stem: string | null): string {
+  if (conceptName) return conceptName;
+  const first = (stem || "")
+    .replace(/[#*>`~]/g, "")
+    .split("\n")
+    .map((s) => s.trim())
+    .find((s) => s);
+  return first ? first.slice(0, 40) : "未命名任务";
+}
+
 /** 首页：模板 Frame2394 视觉 + 今日任务/掌握度/连续天数等真实数据。 */
 const HomeScreen = () => {
   const navigate = useNavigate();
@@ -145,7 +156,8 @@ const HomeScreen = () => {
         tasks={tasks.map((t) => ({
           id: t.id,
           kind: t.kind,
-          title: t.stem || t.conceptName,
+          // 卡片标题用概念名（题干是整段 markdown，会把卡片撑成文字墙）
+          title: cardTitle(t.conceptName, t.stem),
           status: t.status,
           conceptId: t.conceptId,
           subPoint: t.subPoint,

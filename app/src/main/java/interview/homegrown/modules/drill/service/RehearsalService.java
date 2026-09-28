@@ -84,6 +84,21 @@ public class RehearsalService {
 
     @Transactional
     public RehearsalView start(Long userId, Long conceptId) {
+        // 有未结算的 REHEARSAL 先直接恢复（与 LEARN openRun 同策略）：
+        // 否则会先花 ~20s 现场生成题目、最后才撞物理唯一闸门 409，白白浪费一次生成。
+        DrillRun active = runRepo.findByUserIdAndModeOrderByIdDesc(userId, DrillMode.REHEARSAL)
+                .stream()
+                .filter(r -> r.getStatus() == DrillRunStatus.ANSWERING)
+                .findFirst()
+                .orElse(null);
+        if (active != null) {
+            DrillTurn turn = turnRepo.findByRunIdAndRound(active.getId(), active.getCurrentRound())
+                    .or(() -> turnRepo.findByRunIdAndRound(active.getId(), 0))
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "未完成面试的题目不存在"));
+            return RehearsalView.asking(active.getId(), active.getCurrentRound(),
+                    active.getMaxRound(), turn.getStem());
+        }
+
         Long target = conceptId != null ? conceptId : pickEligibleConcept(userId);
         assertEligible(userId, target);
 

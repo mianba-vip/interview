@@ -428,6 +428,12 @@ const Frame2394 = ({
                                 <p
                                     id="2_492"
                                     className="Pixso-paragraph-2_492 pixso-relative-no-shrink pixso-h-auto"
+                                    style={{
+                                        display: "-webkit-box",
+                                        WebkitLineClamp: 2,
+                                        WebkitBoxOrient: "vertical",
+                                        overflow: "hidden",
+                                    }}
                                 >
                                     {t.title}
                                 </p>
@@ -496,6 +502,7 @@ const Frame2394 = ({
                     </div>
                 </div>
                 <div
+                    style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 60 }}
                     id="2_546"
                     className="Pixso-frame-2_546 pixso-relative-no-shrink pixso-flex-auto-height"
                 >

@@ -501,6 +501,7 @@ const Frame21051 = (props: Frame21051Props) => {
                     </div>
                 </div>
                 <div
+                    style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 60 }}
                     id="2_1147"
                     className="Pixso-frame-2_1147 pixso-relative-no-shrink pixso-flex-auto-height"
                 >
