@@ -1,0 +1,101 @@
+.gradle
+build/
+!interview-desktop/build/
+!interview-desktop/build/icon.png
+!interview-desktop/build/icon.ico
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+### Project ###
+.env
+
+### Node（依赖一律不入库；各包自己的 package.json/lock 入库） ###
+node_modules/
+
+### 个人笔记/临时产物（本地保留，不入库） ###
+tmp/
+
+### 自包含后端运行时 / 本地数据库 ###
+runtime/
+runtime-win/
+app/data/
+data/
+
+### macOS ###
+.DS_Store
+
+### Tools ###
+.workbuddy/
+
+### 官网原始截图（121MB TIFF，勿入库；官网用的 Web 优化版在 official-site/assets/screenshots/）###
+pics/
+pics_thumbs/
+
+### 官网部署构建产物（本地组装，勿入库）###
+deploy/web-build/
+
+### 官网截图临时浏览器配置（只用于本地视觉验收，勿入库）###
+deploy/.site-preview/
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+bower_components/
+jspm_packages/
+__pycache__/
+site-packages/
+venv/
+coverage/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.egg-info/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）
