@@ -9,6 +9,8 @@ import InterviewSessionScreen from "@/screens/InterviewSessionScreen";
 import SedimentScreen from "@/screens/SedimentScreen";
 import MeScreen from "@/screens/MeScreen";
 import SettingsScreen from "@/screens/SettingsScreen";
+import DirectionsScreen from "@/screens/DirectionsScreen";
+import AiSettingsScreen from "@/screens/AiSettingsScreen";
 
 export const routes = [
   {
@@ -65,6 +67,16 @@ export const routes = [
     path: "/settings",
     component: SettingsScreen,
     guid: "2:1579",
+  },
+  {
+    path: "/directions",
+    component: DirectionsScreen,
+    guid: "custom:directions",
+  },
+  {
+    path: "/settings/ai",
+    component: AiSettingsScreen,
+    guid: "custom:ai-settings",
   },
 ];
 

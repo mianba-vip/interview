@@ -18,6 +18,7 @@ export interface MeViewProps {
     themeLabel: string; // 主题名
     fontLabel: string; // 字号名
     direction: string; // 学习方向
+    modelLabel: string; // AI 模型设置行右侧的模型名
     onSettings: () => void;
     onRow: (row: string) => void;
     onLogout: () => void;
@@ -39,6 +40,7 @@ const Frame21403 = ({
     themeLabel,
     fontLabel,
     direction,
+    modelLabel,
     onSettings,
     onRow,
     onLogout,
@@ -566,7 +568,7 @@ const Frame21403 = ({
                                                     id="2_1518"
                                                     className="Pixso-paragraph-2_1518 pixso-relative-auto-size pixso-flex-shrink-0"
                                                 >
-                                                    {"mimo-v2.6-flash"}
+                                                    {modelLabel}
                                                 </p>
                                             </div>
                                         </div>

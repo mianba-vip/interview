@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Frame21403 from "@/views/Frame21403";
 import { logout } from "@/api/auth";
 import { knowledgeApi } from "@/api/knowledge";
 import { userApi } from "@/api/user";
 import { history, profile } from "@/api/drill";
+import { listPlans } from "@/api/plan";
+import { getAiSettings } from "@/api/aiSettings";
+import { readActivePlanId } from "@/lib/activePlan";
 import { loadPrefs } from "@/lib/prefs";
 import type { RunSummaryView, TopicProfile, UserProfileView } from "@/api/types";
 
@@ -31,6 +34,9 @@ const MeScreen = () => {
   const [due, setDue] = useState(0);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
+  // 两行入口的右侧值：方向名 / 模型名，失败保留兜底
+  const [planTitle, setPlanTitle] = useState("");
+  const [modelLabel, setModelLabel] = useState("mimo-v2.6-flash");
 
   useEffect(() => {
     // 待复习张数独立兜底，失败不拖垮整屏
@@ -49,6 +55,30 @@ const MeScreen = () => {
       .catch((e: unknown) => setErr(e instanceof Error ? e.message : "加载失败"))
       .finally(() => setLoading(false));
   }, []);
+
+  // 入口右侧值独立兜底：失败不影响整屏（方向名回落第一个，模型名保留静态值）。
+  // Tab 常驻不重挂，按 pathname 变化刷新，保证从子页返回时拿到新值。
+  const { pathname } = useLocation();
+  useEffect(() => {
+    if (pathname !== "/me") return;
+    listPlans()
+      .then((list) => {
+        const stored = readActivePlanId();
+        const active = list.find((p) => p.id === stored) ?? list[0];
+        if (active) setPlanTitle(active.title);
+      })
+      .catch(() => undefined);
+    getAiSettings()
+      .then((v) => setModelLabel(v.model))
+      .catch(() => undefined);
+  }, [pathname]);
+
+  /** 菜单行：两行已接真实子页，其余维持待接入 */
+  const onRow = (row: string) => {
+    if (row === "AI 模型设置") navigate("/settings/ai");
+    else if (row === "学习方向管理") navigate("/directions");
+    else console.log("待接入：", row);
+  };
 
   // 掌握度分层：masteryLevel >=2 已掌握 / =1 进行中 / 其余未掌握
   const concepts = topics.flatMap((t) => t.concepts);
@@ -119,9 +149,10 @@ const MeScreen = () => {
       skillPreview={skillPreview}
       themeLabel={THEME_LABEL[prefs.theme]}
       fontLabel={FONT_LABEL[prefs.fontScale] ?? "标准"}
-      direction={topic ? topic.topic : "Go 后端工程师"}
+      direction={planTitle || (topic ? topic.topic : "Go 后端工程师")}
+      modelLabel={modelLabel}
       onSettings={() => navigate("/settings")}
-      onRow={(row) => console.log("待接入：", row)}
+      onRow={onRow}
       onLogout={() => {
         logout();
         navigate("/login", { replace: true });
