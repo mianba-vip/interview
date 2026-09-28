@@ -176,6 +176,19 @@ public class GradingService {
         if (rawAnswer == null || rawAnswer.isBlank()) {
             throw new ResponseStatusException(BAD_REQUEST, "用户尚未作答，无法评分");
         }
+        // 选择题：评分依据取「最后一次明确给出的选项字母」——答对之后补充的闲聊/解释
+        // 不能把答案顶掉（否则 GraderMcq 会按最后一条非字母文本判成部分分）。
+        if (q.getResponseFormat() == ResponseFormat.CHOICE) {
+            String letterAns = gradeTurns.stream()
+                    .map(DrillTurn::getRawAnswer)
+                    .filter(s -> s != null && !s.isBlank())
+                    .filter(GradingService::looksLikeChoiceAnswer)
+                    .reduce((a, b) -> b)
+                    .orElse(null);
+            if (letterAns != null) {
+                rawAnswer = letterAns;
+            }
+        }
         if (rawAnswer.length() > MAX_COMBINED) {
             rawAnswer = rawAnswer.substring(0, MAX_COMBINED) + "…（作答过长，仅保留开头）";
         }
@@ -192,7 +205,12 @@ public class GradingService {
                 || q.getResponseFormat() == ResponseFormat.STRUCTURED) {
             out = graderText.gradeWithConversation(runId, q, rawAnswer, timed, conversation);
         } else if (q.getResponseFormat() == ResponseFormat.CHOICE) {
-            out = graderMcq.grade(runId, q, rawAnswer, timed);
+            Grader.GraderOutput mcqOut = graderMcq.grade(runId, q, rawAnswer, timed);
+            // 选对：客观精确判分直接满分（GraderMcq 全中 = 100）；
+            // 选错：不再按固定比例扣分，改走与开放题同一套 LLM 判分——按与 AI 的引导交互表现给分。
+            out = mcqOut.rawScore().compareTo(java.math.BigDecimal.valueOf(100)) == 0
+                    ? mcqOut
+                    : graderText.gradeWithConversation(runId, q, rawAnswer, timed, conversation);
         } else {
             throw new ResponseStatusException(NOT_IMPLEMENTED, "CODE 待接力扣判题");
         }
@@ -211,6 +229,18 @@ public class GradingService {
         turnRepo.save(turn0);
 
         return finalizeAndBuildView(userId, run, q, out, timed);
+    }
+
+    /** 选择题作答识别：整段里出现独立的 A-D 字母（"B"、"AC"、"选 B"、"答案:B"、"我选C" 都算）。 */
+    private static boolean looksLikeChoiceAnswer(String s) {
+        String t = s.trim();
+        if (t.matches("[A-Da-d]{1,4}")) {
+            return true;
+        }
+        return java.util.regex.Pattern
+                .compile("(^|[^A-Za-z])[A-D]([^A-Za-z]|$)", java.util.regex.Pattern.MULTILINE)
+                .matcher(t)
+                .find();
     }
 
     /**

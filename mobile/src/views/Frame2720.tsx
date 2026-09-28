@@ -207,9 +207,9 @@ const Frame2720 = ({
                                                 : "frame-content-2_778 pixso-relative-flex"
                                         }
                                     >
-                                        <p className="Pixso-paragraph-2_752 pixso-relative-no-shrink pixso-h-auto">
-                                            {m.text}
-                                        </p>
+                                        <div className="Pixso-paragraph-2_752 pixso-relative-no-shrink pixso-h-auto">
+                                            <MarkdownLite text={m.text} />
+                                        </div>
                                     </div>
                                 </div>
                                 {m.role === "me" ? (
