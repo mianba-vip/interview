@@ -1,4 +1,4 @@
-import "./Frame21051.css";
+import "@/styles/Frame21051.css";
 const Frame21051 = () => {
     return (
         <div className="scroll-container">
@@ -6,6 +6,60 @@ const Frame21051 = () => {
                 id="2_1051"
                 className="Pixso-frame-2_1051 pixso-relative-no-shrink pixso-flex"
             >
+                <div
+                    id="2_1052"
+                    className="Pixso-frame-2_1052 pixso-relative-no-shrink pixso-flex"
+                >
+                    <div className="frame-content-2_1052 pixso-relative-flex">
+                        <p
+                            id="2_1053"
+                            className="Pixso-paragraph-2_1053 pixso-relative-auto-size pixso-flex-shrink-0"
+                        >
+                            {"9:41"}
+                        </p>
+                        <div
+                            id="2_1054"
+                            className="Pixso-frame-2_1054 pixso-relative-flex-auto-size pixso-flex-shrink-0"
+                        >
+                            <div
+                                id="2_1055"
+                                className="Pixso-vector-2_1055 pixso-relative-no-shrink"
+                            ></div>
+                            <div
+                                id="2_1061"
+                                className="Pixso-vector-2_1061 pixso-relative-no-shrink"
+                            ></div>
+                            <div
+                                id="2_1066"
+                                className="Pixso-frame-2_1066 pixso-relative-no-shrink"
+                            >
+                                <div
+                                    id="2_1067"
+                                    className="Pixso-vector-2_1067"
+                                ></div>
+                                <div
+                                    id="2_1068"
+                                    className="Pixso-vector-2_1068"
+                                ></div>
+                                <div
+                                    id="2_1069"
+                                    className="Pixso-vector-2_1069"
+                                ></div>
+                                <div
+                                    id="2_1070"
+                                    className="Pixso-vector-2_1070"
+                                ></div>
+                                <div
+                                    id="2_1071"
+                                    className="stroke-wrapper-2_1071"
+                                >
+                                    <div className="Pixso-rectangle-2_1071 pixso-position-relative"></div>
+                                    <div className="stroke-2_1071"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div
                     id="2_1072"
                     className="Pixso-frame-2_1072 pixso-relative-no-shrink pixso-flex-auto-height"
@@ -495,6 +549,140 @@ const Frame21051 = () => {
                             <div className="Pixso-frame-2_1148 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex"></div>
                             <div className="stroke-2_1148"></div>
                             <div className="Pixso-frame-2_1148-content-layer">
+                                <div className="frame-content-2_1148 pixso-relative-flex">
+                                    <div
+                                        id="2_1149"
+                                        className="Pixso-frame-2_1149 pixso-relative-flex"
+                                    >
+                                        <div className="frame-content-2_1149 pixso-relative-flex">
+                                            <div
+                                                id="2_1150"
+                                                className="Pixso-frame-2_1150 pixso-relative-no-shrink pixso-flex"
+                                            >
+                                                <div className="frame-content-2_1150 pixso-relative-flex">
+                                                    <div
+                                                        id="2_1151"
+                                                        className="Pixso-vector-2_1151 pixso-relative-no-shrink"
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                            <p
+                                                id="2_1154"
+                                                className="Pixso-paragraph-2_1154 pixso-relative-auto-size pixso-flex-shrink-0"
+                                            >
+                                                {"首页"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div
+                                        id="2_1155"
+                                        className="Pixso-frame-2_1155 pixso-relative-flex"
+                                    >
+                                        <div className="frame-content-2_1155 pixso-relative-flex">
+                                            <div
+                                                id="2_1156"
+                                                className="Pixso-frame-2_1156 pixso-relative-no-shrink pixso-flex"
+                                            >
+                                                <div className="frame-content-2_1156 pixso-relative-flex">
+                                                    <div
+                                                        id="2_1157"
+                                                        className="Pixso-vector-2_1157 pixso-relative-no-shrink"
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                            <p
+                                                id="2_1160"
+                                                className="Pixso-paragraph-2_1160 pixso-relative-auto-size pixso-flex-shrink-0"
+                                            >
+                                                {"练习"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div
+                                        id="2_1161"
+                                        className="Pixso-frame-2_1161 pixso-relative-flex"
+                                    >
+                                        <div className="frame-content-2_1161 pixso-relative-flex">
+                                            <div
+                                                id="2_1162"
+                                                className="Pixso-frame-2_1162 pixso-relative-no-shrink pixso-flex"
+                                            >
+                                                <div className="frame-content-2_1162 pixso-relative-flex">
+                                                    <div
+                                                        id="2_1163"
+                                                        className="Pixso-frame-2_1163 pixso-relative-no-shrink"
+                                                    >
+                                                        <div
+                                                            id="2_1164"
+                                                            className="Pixso-vector-2_1164"
+                                                        ></div>
+                                                        <div
+                                                            id="2_1165"
+                                                            className="stroke-wrapper-2_1165"
+                                                        >
+                                                            <div className="Pixso-rectangle-2_1165 pixso-position-relative"></div>
+                                                            <div className="stroke-2_1165"></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <p
+                                                id="2_1166"
+                                                className="Pixso-paragraph-2_1166 pixso-relative-auto-size pixso-flex-shrink-0"
+                                            >
+                                                {"面试"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div
+                                        id="2_1167"
+                                        className="Pixso-frame-2_1167 pixso-relative-flex"
+                                    >
+                                        <div className="frame-content-2_1167 pixso-relative-flex">
+                                            <div
+                                                id="2_1168"
+                                                className="Pixso-frame-2_1168 pixso-relative-no-shrink pixso-flex"
+                                            >
+                                                <div className="frame-content-2_1168 pixso-relative-flex">
+                                                    <div
+                                                        id="2_1169"
+                                                        className="Pixso-vector-2_1169 pixso-relative-no-shrink"
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                            <p
+                                                id="2_1173"
+                                                className="Pixso-paragraph-2_1173 pixso-relative-auto-size pixso-flex-shrink-0"
+                                            >
+                                                {"沉淀"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div
+                                        id="2_1174"
+                                        className="Pixso-frame-2_1174 pixso-relative-flex"
+                                    >
+                                        <div className="frame-content-2_1174 pixso-relative-flex">
+                                            <div
+                                                id="2_1175"
+                                                className="Pixso-frame-2_1175 pixso-relative-no-shrink pixso-flex"
+                                            >
+                                                <div className="frame-content-2_1175 pixso-relative-flex">
+                                                    <div
+                                                        id="2_1176"
+                                                        className="Pixso-vector-2_1176 pixso-relative-no-shrink"
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                            <p
+                                                id="2_1179"
+                                                className="Pixso-paragraph-2_1179 pixso-relative-auto-size pixso-flex-shrink-0"
+                                            >
+                                                {"我的"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
