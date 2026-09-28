@@ -10,7 +10,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'https://mianba.vip',
+        target: 'http://103.236.92.40:23333', // 直连源站：绕过 EdgeOne 回源链路（实测每次请求多 0.7~1.5s）
         changeOrigin: true,
         secure: true,
       },
