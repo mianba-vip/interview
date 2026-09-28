@@ -850,3 +850,45 @@ textarea {
   font-weight: 500;
   color: var(--ink);
 }
+
+/* ---- 练习屏照 Frame2579 规格对齐 ---- */
+.hist-card {
+  border-radius: 20px;
+  padding: 16px;
+}
+/* 进行中卡：2px 活力紫→薄荷渐变外框（设计系统“外框 2px 渐变”）+ 内白卡 */
+.ongoing-shell {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-top: 14px;
+  padding: 2px;
+  border: none;
+  border-radius: 24px;
+  background: linear-gradient(135deg, var(--primary), var(--mint));
+  box-shadow: var(--shadow-card);
+}
+.ongoing-shell:active {
+  transform: scale(0.98);
+}
+.ongoing-inner {
+  background: var(--card);
+  border-radius: 22px;
+  padding: 16px;
+}
+.ongoing-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 44px;
+  margin-top: 12px;
+  border-radius: 14px;
+  background: var(--grad-primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+.hint-card .hint-title {
+  font-size: 14px;
+}
