@@ -135,3 +135,8 @@ export function rehearsalAnswer(
 export function historyPage(offset: number, limit = 20): Promise<RunSummaryView[]> {
   return apiFetch<RunSummaryView[]>(`/drill/history/page?offset=${offset}&limit=${limit}`);
 }
+
+/** 内化欠账条数（首页展示）。 */
+export function debtCount(): Promise<number> {
+  return apiFetch<unknown[]>('/drill/debt').then((d) => (Array.isArray(d) ? d.length : 0));
+}
