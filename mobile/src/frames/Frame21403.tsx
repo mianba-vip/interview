@@ -1,5 +1,13 @@
 import "./Frame21403.css";
-const Frame21403 = () => {
+export interface MeFrameProps {
+  name: string; subtitle: string; joinedText: string; completion: number;
+  streak: number; totalPractice: number; due: number;
+  total: number; mastered: number; inProgress: number; notMastered: number;
+  skillPreview: string; themeLabel: string; fontLabel: string; model: string;
+  onAppearance?: () => void; onAiSettings?: () => void;
+}
+
+const Frame21403 = ({ name, subtitle, joinedText, completion, streak, totalPractice, due, total, mastered, inProgress, notMastered, skillPreview, themeLabel, fontLabel, model, onAppearance, onAiSettings }: MeFrameProps) => {
     return (
         <div className="scroll-container">
             <div
@@ -26,7 +34,7 @@ const Frame21403 = () => {
                                     id="2_1427"
                                     className="Pixso-paragraph-2_1427 pixso-relative-auto-size pixso-flex-shrink-0"
                                 >
-                                    {"已加入 26 天"}
+                                    {joinedText}
                                 </p>
                             </div>
                         </div>
@@ -55,13 +63,13 @@ const Frame21403 = () => {
                                             id="2_1432"
                                             className="Pixso-paragraph-2_1432 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
-                                            {"Xiaoyu"}
+                                            {name}
                                         </p>
                                         <p
                                             id="2_1433"
                                             className="Pixso-paragraph-2_1433 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
-                                            {"Go 后端工程师 · L1 筑基"}
+                                            {subtitle}
                                         </p>
                                         <div
                                             id="2_1434"
@@ -101,7 +109,7 @@ const Frame21403 = () => {
                                                     id="2_1444"
                                                     className="Pixso-paragraph-2_1444 pixso-relative-auto-size pixso-flex-shrink-0"
                                                 >
-                                                    {"68%"}
+                                                    {`${completion}%`}
                                                 </p>
                                             </div>
                                         </div>
@@ -142,7 +150,7 @@ const Frame21403 = () => {
                                                         id="2_1452"
                                                         className="Pixso-paragraph-2_1452 pixso-relative-auto-size pixso-flex-shrink-0"
                                                     >
-                                                        {"7"}
+                                                        {String(streak)}
                                                     </p>
                                                 </div>
                                                 <p
@@ -162,7 +170,7 @@ const Frame21403 = () => {
                                                     id="2_1455"
                                                     className="Pixso-paragraph-2_1455 pixso-relative-auto-size pixso-flex-shrink-0"
                                                 >
-                                                    {"86"}
+                                                    {String(totalPractice)}
                                                 </p>
                                                 <p
                                                     id="2_1456"
@@ -181,7 +189,7 @@ const Frame21403 = () => {
                                                     id="2_1458"
                                                     className="Pixso-paragraph-2_1458 pixso-relative-auto-size pixso-flex-shrink-0"
                                                 >
-                                                    {"12"}
+                                                    {String(due)}
                                                 </p>
                                                 <p
                                                     id="2_1459"
@@ -212,7 +220,7 @@ const Frame21403 = () => {
                                             id="2_1463"
                                             className="Pixso-paragraph-2_1463 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
-                                            {"25 个知识点"}
+                                            {`${total} 个知识点`}
                                         </p>
                                     </div>
                                 </div>
@@ -222,14 +230,17 @@ const Frame21403 = () => {
                                 >
                                     <div className="frame-content-2_1464 pixso-relative-flex">
                                         <div
+                                        style={{ flex: mastered }}
                                             id="2_1465"
                                             className="Pixso-frame-2_1465 pixso-relative-no-shrink"
                                         ></div>
                                         <div
+                                        style={{ flex: inProgress }}
                                             id="2_1466"
                                             className="Pixso-frame-2_1466 pixso-relative-no-shrink"
                                         ></div>
                                         <div
+                                        style={{ flex: notMastered }}
                                             id="2_1467"
                                             className="Pixso-frame-2_1467 pixso-relative-no-shrink"
                                         ></div>
@@ -252,7 +263,7 @@ const Frame21403 = () => {
                                                 id="2_1471"
                                                 className="Pixso-paragraph-2_1471 pixso-relative-auto-size pixso-flex-shrink-0"
                                             >
-                                                {"已掌握 12"}
+                                                {`已掌握 ${mastered}`}
                                             </p>
                                         </div>
                                         <div
@@ -309,9 +320,7 @@ const Frame21403 = () => {
                                             id="2_1481"
                                             className="Pixso-paragraph-2_1481 pixso-relative-no-shrink pixso-h-auto"
                                         >
-                                            {
-                                                "已掌握：GMP 调度 · 逃逸分析 · 索引下推 等 12 个知识点"
-                                            }
+                                                {skillPreview}
                                         </p>
                                     </div>
                                 </div>
@@ -337,6 +346,7 @@ const Frame21403 = () => {
                                         >
                                             <div className="frame-content-2_1486 pixso-relative-flex">
                                                 <div
+                                                onClick={onAppearance}
                                                     id="2_1487"
                                                     className="Pixso-vector-2_1487 pixso-relative-no-shrink"
                                                 ></div>
@@ -357,7 +367,7 @@ const Frame21403 = () => {
                                                     id="2_1495"
                                                     className="Pixso-paragraph-2_1495 pixso-relative-auto-size pixso-flex-shrink-0"
                                                 >
-                                                    {"奶油白天 · 字号：标准"}
+                                                    {`${themeLabel} · 字号：${fontLabel}`}
                                                 </p>
                                             </div>
                                         </div>
@@ -441,6 +451,7 @@ const Frame21403 = () => {
                                                         <div className="stroke-2_1514"></div>
                                                     </div>
                                                     <div
+                                                    onClick={onAiSettings}
                                                         id="2_1515"
                                                         className="stroke-wrapper-2_1515"
                                                     >
@@ -465,7 +476,7 @@ const Frame21403 = () => {
                                                     id="2_1518"
                                                     className="Pixso-paragraph-2_1518 pixso-relative-auto-size pixso-flex-shrink-0"
                                                 >
-                                                    {"mimo-v2.6-flash"}
+                                                    {model}
                                                 </p>
                                             </div>
                                         </div>
