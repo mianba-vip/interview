@@ -149,7 +149,7 @@ export default function PracticeScreen() {
       <div className="hint-card">
         <span className="hint-icon"><Sparkles size={18} /></span>
         <div>
-          <div style={{ fontWeight: 800 }}>AI 导师只提问引导，不直接给答案</div>
+          <div className="hint-title" style={{ fontWeight: 700 }}>AI 导师只提问引导，不直接给答案</div>
           <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 4 }}>
             先想通，才是真的会——把答案说出口前，先自己想一遍。
           </div>
@@ -159,16 +159,19 @@ export default function PracticeScreen() {
       {err && <div className="form-err">{err}</div>}
 
       {ongoing.map((r) => (
-        <button key={r.runId} className="task-card ongoing-card" onClick={() => open(r)} disabled={busy !== null}>
-          <div className="task-head">
-            <span className="pill" style={{ background: 'var(--primary-soft)', color: 'var(--primary)' }}>● 进行中</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>
-              第 {turnsByRun[r.runId] ?? 1} 轮对话中
-            </span>
-          </div>
-          <div className="hist-title">{plainStem(r.stem).slice(0, 30)}{plainStem(r.stem).length > 30 ? '…' : ''}</div>
-          <div style={{ marginTop: 8, fontSize: 13, color: 'var(--ink-soft)' }}>
-            对话轮次 {turnsByRun[r.runId] ?? 1}
+        <button key={r.runId} className="ongoing-shell" onClick={() => open(r)} disabled={busy !== null}>
+          <div className="ongoing-inner">
+            <div className="task-head">
+              <span className="pill" style={{ background: 'var(--primary-soft)', color: 'var(--primary)' }}>● 进行中</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>
+                第 {turnsByRun[r.runId] ?? 1} 轮对话中
+              </span>
+            </div>
+            <div className="hist-title">{plainStem(r.stem).slice(0, 30)}{plainStem(r.stem).length > 30 ? '…' : ''}</div>
+            <div style={{ marginTop: 7, fontSize: 13, color: 'var(--ink-soft)' }}>
+              对话轮次 {turnsByRun[r.runId] ?? 1} · 已持续 {Math.max(1, Math.round((Date.now() - new Date(r.answeredAt).getTime()) / 60000))} 分钟
+            </div>
+            <div className="ongoing-cta">继续练习 <ChevronRight size={16} /></div>
           </div>
         </button>
       ))}
