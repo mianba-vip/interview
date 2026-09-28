@@ -1,6 +1,6 @@
 import { Fragment } from 'react';
 
-/** 掌握度环形图：三段色（薄荷=已掌握 / 柠檬=进行中 / 珊瑚=未掌握），中心显示知识点总数。 */
+/** 掌握度环形图：三段色（薄荷=已掌握 / 柠檬=进行中 / 珊瑚=未掌握），12 点方向起始；中心数字不旋转。 */
 export default function MasteryRing({
   mastered,
   inProgress,
@@ -23,28 +23,31 @@ export default function MasteryRing({
 
   let acc = 0;
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--input)" strokeWidth={stroke} />
-      {segs.map((s, i) => {
-        if (s.v <= 0) return null;
-        const len = (s.v / total) * circumference;
-        const el = (
-          <Fragment key={i}>
-            <circle
-              cx={size / 2}
-              cy={size / 2}
-              r={r}
-              fill="none"
-              stroke={s.color}
-              strokeWidth={stroke}
-              strokeDasharray={`${len} ${circumference - len}`}
-              strokeDashoffset={-acc}
-            />
-          </Fragment>
-        );
-        acc += len;
-        return el;
-      })}
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {/* 只旋转圆环组：让分段从 12 点方向开始；中心文字保持正立 */}
+      <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--input)" strokeWidth={stroke} />
+        {segs.map((s, i) => {
+          if (s.v <= 0) return null;
+          const len = (s.v / total) * circumference;
+          const el = (
+            <Fragment key={i}>
+              <circle
+                cx={size / 2}
+                cy={size / 2}
+                r={r}
+                fill="none"
+                stroke={s.color}
+                strokeWidth={stroke}
+                strokeDasharray={`${len} ${circumference - len}`}
+                strokeDashoffset={-acc}
+              />
+            </Fragment>
+          );
+          acc += len;
+          return el;
+        })}
+      </g>
       <text
         x="50%"
         y="46%"
@@ -52,7 +55,7 @@ export default function MasteryRing({
         dominantBaseline="central"
         style={{ fontSize: 30, fontWeight: 800, fill: 'var(--primary)', fontFamily: 'DM Sans, sans-serif' }}
       >
-        {mastered + inProgress + notMastered}
+        {total}
       </text>
       <text x="50%" y="62%" textAnchor="middle" style={{ fontSize: 11, fill: 'var(--ink-faint)' }}>
         知识点

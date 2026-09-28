@@ -41,7 +41,7 @@ export default function TasksScreen() {
     setStarting(t.id);
     try {
       const view = await startTask(t.id);
-      navigate(`/run/${view.runId}`, { state: view });
+      navigate(`/run/${view.runId}`, { state: { view } });
     } catch (e) {
       setErr(e instanceof Error ? e.message : '开题失败，请重试');
     } finally {

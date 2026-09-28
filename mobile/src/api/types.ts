@@ -124,3 +124,48 @@ export interface ChatMsg {
   text: string;
   reasoning?: string;
 }
+
+export interface KnowledgeCardView {
+  id: number;
+  question: string;
+  answer: string | null;
+  tags: string | null;
+  sourceRunId: number | null;
+  dueAt: string | null;
+}
+
+export interface CorpusView {
+  id: number;
+  name: string;
+  charCount: number;
+  sourceType: string;
+  createdAt: string;
+  overview: string | null;
+  indexState: string;
+  topics: string[] | null;
+  chunkCount: number;
+  hasOriginal: boolean;
+}
+
+export interface RehearsalView {
+  runId: number;
+  round: number;
+  maxRound: number;
+  stem: string;
+  finished: boolean;
+  score: number | null;
+  grade: string | null;
+  allPassed: boolean | null;
+  roundScores: string[];
+  byConceptJson: string | null;
+}
+
+export interface UserProfileView {
+  id: number;
+  email: string;
+  username: string;
+  nickname: string | null;
+  gender: string | null;
+  phone: string | null;
+  birthday: string | null;
+}
