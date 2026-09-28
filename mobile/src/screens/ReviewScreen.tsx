@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { runDetail, review } from '../api/drill';
 import type { GradeView, ReviewView } from '../api/types';
+import { MarkdownLite } from '../components/MarkdownLite';
 
 interface ByConceptRow {
   conceptId: number;
@@ -96,7 +97,7 @@ export default function ReviewScreen() {
           <div className="card-title">评分点明细</div>
           {rows.map((r, i) => (
             <div key={i} className="detail-row">
-              <span>{r.point}</span>
+              <span className="rv-point"><MarkdownLite text={r.point} /></span>
               <span className={'verdict-pill ' + (VERDICT[r.verdict]?.cls ?? 'v-partial')}>
                 {VERDICT[r.verdict]?.label ?? r.verdict}
               </span>
@@ -112,9 +113,13 @@ export default function ReviewScreen() {
               <div className="card-title" style={{ color: 'var(--coral)' }}>
                 对话总结 · {rv.weakPoints.length} 个欠缺
               </div>
+              {rv.gapSummary && <div className="review-text"><MarkdownLite text={rv.gapSummary} /></div>}
               <ul className="weak-list">
                 {rv.weakPoints.map((w, i) => (
-                  <li key={i}>{w}</li>
+                  <li key={i}>
+                    <span className="weak-dot" />
+                    <span className="rv-md"><MarkdownLite text={w} /></span>
+                  </li>
                 ))}
               </ul>
             </div>
@@ -122,13 +127,13 @@ export default function ReviewScreen() {
           {rv.approach && (
             <div className="card">
               <div className="card-title">解题思路</div>
-              <div className="review-text">{rv.approach}</div>
+              <div className="review-text"><MarkdownLite text={rv.approach} /></div>
             </div>
           )}
           {rv.mnemonic && (
             <div className="card">
               <div className="card-title">记忆口诀</div>
-              <div className="quote">{rv.mnemonic}</div>
+              <div className="quote"><MarkdownLite text={rv.mnemonic} /></div>
             </div>
           )}
         </>

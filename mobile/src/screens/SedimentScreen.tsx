@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { corpusApi } from '../api/corpus';
 import { knowledgeApi } from '../api/knowledge';
 import type { CorpusView, KnowledgeCardView } from '../api/types';
+import { MarkdownLite } from '../components/MarkdownLite';
 
 type Seg = 'cards' | 'due' | 'corpus';
 
@@ -54,8 +55,8 @@ export default function SedimentScreen() {
       {seg !== 'corpus' &&
         (list as KnowledgeCardView[])?.map((c) => (
           <div key={c.id} className="card">
-            <div className="card-title">{c.question}</div>
-            {c.answer && <div className="card-sub">{c.answer.slice(0, 120)}{c.answer.length > 120 ? '…' : ''}</div>}
+            <div className="card-title"><MarkdownLite text={c.question} /></div>
+            {c.answer && <div className="card-sub"><MarkdownLite text={c.answer} /></div>}
             {c.tags && (
               <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
                 {c.tags.split(/[,，]/).filter(Boolean).map((t) => (
