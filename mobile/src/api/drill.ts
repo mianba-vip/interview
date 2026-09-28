@@ -130,3 +130,8 @@ export function rehearsalAnswer(
     },
   );
 }
+
+/** 分页历史（懒加载）：最新在前；limit 默认 20。 */
+export function historyPage(offset: number, limit = 20): Promise<RunSummaryView[]> {
+  return apiFetch<RunSummaryView[]>(`/drill/history/page?offset=${offset}&limit=${limit}`);
+}

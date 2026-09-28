@@ -843,3 +843,10 @@ textarea {
 .ongoing-card {
   border: 2px solid var(--primary);
 }
+
+/* ---- 历史练习行：标题不加粗（照设计稿），正常字重 ---- */
+.hist-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+}
