@@ -1,0 +1,104 @@
+/* 全局补充样式：模板 Frame 自带的排版之外，动态数据（后端 Markdown / 流式内容）需要的基础样式 */
+
+body {
+  font-family: "Noto Sans SC-Regular", "DM Sans-Medium", system-ui,
+    -apple-system, sans-serif;
+  font-size: var(--font-body, 16px);
+  line-height: 1.65;
+  color: var(--color-text-primary);
+  background: var(--color-bg-cream);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* 模板 scroll-container 桌面预览时隐藏滚动条（更贴近真机） */
+.scroll-container {
+  scrollbar-width: none;
+}
+.scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---- 后端 Markdown 渲染（MarkdownLite） ---- */
+.mdlite {
+  word-break: break-word;
+}
+.mdlite p {
+  margin: 0 0 0.35em;
+}
+.mdlite p:last-child {
+  margin-bottom: 0;
+}
+.mdlite ul,
+.mdlite ol {
+  padding-left: 1.3em;
+  margin: 0.3em 0;
+}
+.mdlite li {
+  margin: 0.15em 0;
+}
+.mdlite pre.mono-block,
+.mono-fallback {
+  background: var(--color-bg-code);
+  border-radius: 12px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: "DM Sans-Medium", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 10px 0;
+  white-space: pre;
+}
+.mdlite code.mono-inline {
+  background: var(--color-bg-code);
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-family: "DM Sans-Medium", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+}
+
+/* ---- 流程示意：A[标签] --> B[标签] 链 → 彩色胶囊 ---- */
+.pillflow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0;
+}
+.pillflow-node {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.pillflow-arrow {
+  color: var(--color-text-placeholder);
+  font-weight: 700;
+}
+
+/* ---- 通用加载转圈 ---- */
+.spin {
+  animation: mianba-spin 1s linear infinite;
+}
+@keyframes mianba-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

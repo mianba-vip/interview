@@ -1,24 +1,5 @@
-import "./Frame2877.css";
-export interface ReviewFrameRow { point: string; verdict: 'HIT' | 'PARTIAL' | 'MISS'; verdictLabel: string }
-export interface ReviewFrameProps {
-  score: number;
-  grade: string;
-  timeText: string;
-  attemptText: string;
-  rows: ReviewFrameRow[];
-  weak: string[];
-  rv: { mnemonic: string | null; approach: string | null };
-  onBack?: () => void;
-  onCard?: () => void;
-}
-const pillStyle = (v: string) =>
-  v === 'HIT'
-    ? { background: 'var(--mint-soft)', color: '#1d8a82' }
-    : v === 'PARTIAL'
-      ? { background: 'var(--lemon-soft)', color: '#8a6d0b' }
-      : { background: 'var(--coral-soft)', color: '#b23b3b' };
-
-const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack, onCard }: ReviewFrameProps) => {
+import "@/styles/Frame2877.css";
+const Frame2877 = () => {
     return (
         <div className="scroll-container">
             <div
@@ -31,7 +12,6 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                 >
                     <div className="frame-content-2_878 pixso-relative-flex">
                         <div
-                        onClick={onBack}
                             id="2_879"
                             className="Pixso-frame-2_879 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex"
                         >
@@ -92,7 +72,7 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                             id="2_898"
                                             className="Pixso-paragraph-2_898 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
-                                            {grade}
+                                            {"GOOD"}
                                         </p>
                                     </div>
                                     <div className="stroke-2_894"></div>
@@ -105,7 +85,7 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                         id="2_900"
                                         className="Pixso-paragraph-2_900 pixso-relative-auto-size pixso-flex-shrink-0"
                                     >
-                                        {String(Math.round(score))}
+                                        {"85"}
                                     </p>
                                     <p
                                         id="2_901"
@@ -122,7 +102,7 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                         id="2_903"
                                         className="Pixso-paragraph-2_903 pixso-relative-auto-size pixso-flex-shrink-0"
                                     >
-                                        {timeText}
+                                        {"用时 6 分 32 秒"}
                                     </p>
                                     <div
                                         id="2_904"
@@ -132,7 +112,7 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                         id="2_905"
                                         className="Pixso-paragraph-2_905 pixso-relative-auto-size pixso-flex-shrink-0"
                                     >
-                                        {attemptText}
+                                        {"第 1 次作答"}
                                     </p>
                                 </div>
                             </div>
@@ -157,10 +137,9 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                             id="2_909"
                                             className="Pixso-paragraph-2_909 pixso-position-relative pixso-h-auto"
                                         >
-                                            {rows[0].point}
+                                            {"正确指出 Parse 默认使用 UTC"}
                                         </p>
                                         <div
- style={pillStyle(rows[0].verdict)}
                                             id="2_910"
                                             className="Pixso-frame-2_910 pixso-relative-flex-auto-size pixso-flex-shrink-0"
                                         >
@@ -168,7 +147,7 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                                 id="2_911"
                                                 className="Pixso-paragraph-2_911 pixso-relative-auto-size pixso-flex-shrink-0"
                                             >
-                                                {rows[0].verdictLabel}
+                                                {"命中"}
                                             </p>
                                         </div>
                                     </div>
@@ -182,10 +161,9 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                             id="2_913"
                                             className="Pixso-paragraph-2_913 pixso-position-relative pixso-h-auto"
                                         >
-                                            {rows[1].point}
+                                            {"区分「解析」与「格式化」两个阶段"}
                                         </p>
                                         <div
- style={pillStyle(rows[1].verdict)}
                                             id="2_914"
                                             className="Pixso-frame-2_914 pixso-relative-flex-auto-size pixso-flex-shrink-0"
                                         >
@@ -193,7 +171,7 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                                 id="2_915"
                                                 className="Pixso-paragraph-2_915 pixso-relative-auto-size pixso-flex-shrink-0"
                                             >
-                                                {rows[1].verdictLabel}
+                                                {"部分"}
                                             </p>
                                         </div>
                                     </div>
@@ -207,10 +185,11 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                             id="2_917"
                                             className="Pixso-paragraph-2_917 pixso-position-relative pixso-h-auto"
                                         >
-                                                {rows[2].point}
+                                            {
+                                                "说明 loc 参数如何影响 Format 输出"
+                                            }
                                         </p>
                                         <div
- style={pillStyle(rows[2].verdict)}
                                             id="2_918"
                                             className="Pixso-frame-2_918 pixso-relative-flex-auto-size pixso-flex-shrink-0"
                                         >
@@ -218,7 +197,7 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                                 id="2_919"
                                                 className="Pixso-paragraph-2_919 pixso-relative-auto-size pixso-flex-shrink-0"
                                             >
-                                                {rows[2].verdictLabel}
+                                                {"缺失"}
                                             </p>
                                         </div>
                                     </div>
@@ -232,10 +211,9 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                             id="2_921"
                                             className="Pixso-paragraph-2_921 pixso-position-relative pixso-h-auto"
                                         >
-                                            {rows[3].point}
+                                            {"给出 ParseInLocation 的修复方案"}
                                         </p>
                                         <div
- style={pillStyle(rows[3].verdict)}
                                             id="2_922"
                                             className="Pixso-frame-2_922 pixso-relative-flex-auto-size pixso-flex-shrink-0"
                                         >
@@ -243,7 +221,7 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                                 id="2_923"
                                                 className="Pixso-paragraph-2_923 pixso-relative-auto-size pixso-flex-shrink-0"
                                             >
-                                                {rows[3].verdictLabel}
+                                                {"命中"}
                                             </p>
                                         </div>
                                     </div>
@@ -303,18 +281,48 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                             id="2_934"
                                             className="Pixso-paragraph-2_934 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
-                                            {`对话总结 · ${weak.length} 个欠缺点`}
+                                            {"对话总结 · 2 个欠缺点"}
                                         </p>
                                     </div>
                                 </div>
-{weak.map((w, i) => (
-  <div key={i} className="Pixso-frame-2_935 pixso-relative-no-shrink pixso-flex-auto-height">
-    <div className="frame-content-2_935 pixso-relative-flex">
-      <div className="Pixso-frame-2_936 pixso-relative-no-shrink"></div>
-      <p className="Pixso-paragraph-2_937 pixso-position-relative pixso-h-auto">{w}</p>
-    </div>
-  </div>
-))}
+                                <div
+                                    id="2_935"
+                                    className="Pixso-frame-2_935 pixso-relative-no-shrink pixso-flex-auto-height"
+                                >
+                                    <div className="frame-content-2_935 pixso-relative-flex">
+                                        <div
+                                            id="2_936"
+                                            className="Pixso-frame-2_936 pixso-relative-no-shrink"
+                                        ></div>
+                                        <p
+                                            id="2_937"
+                                            className="Pixso-paragraph-2_937 pixso-position-relative pixso-h-auto"
+                                        >
+                                            {
+                                                "没有说明 Parse 的默认 Location 来自运行环境（UTC 容器 → UTC 时间）"
+                                            }
+                                        </p>
+                                    </div>
+                                </div>
+                                <div
+                                    id="2_938"
+                                    className="Pixso-frame-2_938 pixso-relative-no-shrink pixso-flex-auto-height"
+                                >
+                                    <div className="frame-content-2_938 pixso-relative-flex">
+                                        <div
+                                            id="2_939"
+                                            className="Pixso-frame-2_939 pixso-relative-no-shrink"
+                                        ></div>
+                                        <p
+                                            id="2_940"
+                                            className="Pixso-paragraph-2_940 pixso-position-relative pixso-h-auto"
+                                        >
+                                            {
+                                                "未提到 ParseInLocation 的第三个参数 loc 到底是给谁用的"
+                                            }
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div
@@ -358,7 +366,9 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                             id="2_949_0_1"
                                             className="Pixso-span-2_949_0_1 pixso-relative-no-shrink"
                                         >
-                                                {(rv.approach?.split('\n')[0]) ?? ''}
+                                            {
+                                                "1  先判断 Parse 用的 Location：不传 loc 时默认走 UTC。"
+                                            }
                                         </span>
                                     </p>
                                     <p
@@ -369,7 +379,9 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                             id="2_949_1_1"
                                             className="Pixso-span-2_949_1_1 pixso-relative-no-shrink"
                                         >
-                                                {(rv.approach?.split('\n')[1]) ?? ''}
+                                            {
+                                                "2  再确认容器时区：TZ=UTC 只影响 time.Local，不影响 Parse 的默认值。"
+                                            }
                                         </span>
                                     </p>
                                     <p
@@ -380,7 +392,9 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                             id="2_949_2_1"
                                             className="Pixso-span-2_949_2_1 pixso-relative-no-shrink"
                                         >
-                                                {(rv.approach?.split('\n')[2]) ?? ''}
+                                            {
+                                                "3  需要按北京时间输出时，解析阶段就用 ParseInLocation(layout, s, loc)。"
+                                            }
                                         </span>
                                     </p>
                                 </div>
@@ -404,7 +418,7 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                             id="2_955"
                                             className="Pixso-paragraph-2_955 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
-                                            {'记忆口诀'}
+                                            {"记忆口诀"}
                                         </p>
                                     </div>
                                 </div>
@@ -412,7 +426,9 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                                     id="2_956"
                                     className="Pixso-paragraph-2_956 pixso-relative-no-shrink pixso-h-auto"
                                 >
-                                        {rv.mnemonic ?? ''}
+                                    {
+                                        "解析认环境，格式化认 Location——想让两边都听话，就用 ParseInLocation。"
+                                    }
                                 </p>
                             </div>
                         </div>
@@ -441,7 +457,6 @@ const Frame2877 = ({ score, grade, timeText, attemptText, rows, weak, rv, onBack
                             </div>
                         </div>
                         <div
-                        onClick={onCard}
                             id="2_963"
                             className="stroke-wrapper-2_963 pixso-relative-flex"
                         >

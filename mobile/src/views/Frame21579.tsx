@@ -1,15 +1,5 @@
-import "./Frame21579.css";
-export interface SettingsFrameProps {
-  themeLabel: string; fontLabel: string; theme: string; fontScale: number;
-  remindOn: boolean; voiceOn: boolean;
-  setTheme: (t: 'cream' | 'white' | 'system') => void;
-  setFont: (n: number) => void;
-  toggleRemind: () => void; toggleVoice: () => void;
-  onBack: () => void;
-  onClear: () => void;
-}
-
-const Frame21579 = ({ themeLabel, fontLabel, theme, fontScale, remindOn, voiceOn, setTheme, setFont, toggleRemind, toggleVoice, onBack, onClear }: SettingsFrameProps) => {
+import "@/styles/Frame21579.css";
+const Frame21579 = () => {
     return (
         <div className="scroll-container">
             <div
@@ -17,12 +7,65 @@ const Frame21579 = ({ themeLabel, fontLabel, theme, fontScale, remindOn, voiceOn
                 className="Pixso-frame-2_1579 pixso-relative-no-shrink pixso-flex"
             >
                 <div
+                    id="2_1580"
+                    className="Pixso-frame-2_1580 pixso-relative-no-shrink pixso-flex"
+                >
+                    <div className="frame-content-2_1580 pixso-relative-flex">
+                        <p
+                            id="2_1581"
+                            className="Pixso-paragraph-2_1581 pixso-relative-auto-size pixso-flex-shrink-0"
+                        >
+                            {"9:41"}
+                        </p>
+                        <div
+                            id="2_1582"
+                            className="Pixso-frame-2_1582 pixso-relative-flex-auto-size pixso-flex-shrink-0"
+                        >
+                            <div
+                                id="2_1583"
+                                className="Pixso-vector-2_1583 pixso-relative-no-shrink"
+                            ></div>
+                            <div
+                                id="2_1589"
+                                className="Pixso-vector-2_1589 pixso-relative-no-shrink"
+                            ></div>
+                            <div
+                                id="2_1594"
+                                className="Pixso-frame-2_1594 pixso-relative-no-shrink"
+                            >
+                                <div
+                                    id="2_1595"
+                                    className="Pixso-vector-2_1595"
+                                ></div>
+                                <div
+                                    id="2_1596"
+                                    className="Pixso-vector-2_1596"
+                                ></div>
+                                <div
+                                    id="2_1597"
+                                    className="Pixso-vector-2_1597"
+                                ></div>
+                                <div
+                                    id="2_1598"
+                                    className="Pixso-vector-2_1598"
+                                ></div>
+                                <div
+                                    id="2_1599"
+                                    className="stroke-wrapper-2_1599"
+                                >
+                                    <div className="Pixso-rectangle-2_1599 pixso-position-relative"></div>
+                                    <div className="stroke-2_1599"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div
                     id="2_1600"
                     className="Pixso-frame-2_1600 pixso-relative-no-shrink pixso-flex-auto-height"
                 >
                     <div className="frame-content-2_1600 pixso-relative-flex">
                         <div
-                        onClick={onBack}
                             id="2_1601"
                             className="Pixso-frame-2_1601 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex"
                         >
@@ -74,7 +117,7 @@ const Frame21579 = ({ themeLabel, fontLabel, theme, fontScale, remindOn, voiceOn
                                                 id="2_1612"
                                                 className="Pixso-paragraph-2_1612 pixso-relative-auto-size pixso-flex-shrink-0"
                                             >
-                                                {`当前：${themeLabel}`}
+                                                {"当前：奶油白天"}
                                             </p>
                                         </div>
                                     </div>
@@ -85,8 +128,6 @@ const Frame21579 = ({ themeLabel, fontLabel, theme, fontScale, remindOn, voiceOn
                                 >
                                     <div className="frame-content-2_1613 pixso-relative-flex">
                                         <div
-                                        onClick={() => setTheme('cream')}
-                                        style={{ outline: theme === 'cream' ? '2px solid var(--primary)' : 'none', outlineOffset: 2 }}
                                             id="2_1614"
                                             className="Pixso-frame-2_1614 pixso-relative-flex pixso-h-auto"
                                         >
@@ -122,8 +163,6 @@ const Frame21579 = ({ themeLabel, fontLabel, theme, fontScale, remindOn, voiceOn
                                             </div>
                                         </div>
                                         <div
-                                        onClick={() => setTheme('white')}
-                                        style={{ outline: theme === 'white' ? '2px solid var(--primary)' : 'none', outlineOffset: 2 }}
                                             id="2_1620"
                                             className="Pixso-frame-2_1620 pixso-relative-flex pixso-h-auto"
                                         >
@@ -144,8 +183,6 @@ const Frame21579 = ({ themeLabel, fontLabel, theme, fontScale, remindOn, voiceOn
                                             </div>
                                         </div>
                                         <div
-                                        onClick={() => setTheme('system')}
-                                        style={{ outline: theme === 'system' ? '2px solid var(--primary)' : 'none', outlineOffset: 2 }}
                                             id="2_1623"
                                             className="Pixso-frame-2_1623 pixso-relative-flex pixso-h-auto"
                                         >
@@ -193,7 +230,7 @@ const Frame21579 = ({ themeLabel, fontLabel, theme, fontScale, remindOn, voiceOn
                                                 id="2_1630"
                                                 className="Pixso-paragraph-2_1630 pixso-relative-auto-size pixso-flex-shrink-0"
                                             >
-                                                {`当前：${fontLabel}`}
+                                                {"当前：标准"}
                                             </p>
                                         </div>
                                     </div>
@@ -203,9 +240,21 @@ const Frame21579 = ({ themeLabel, fontLabel, theme, fontScale, remindOn, voiceOn
                                     className="Pixso-frame-2_1631 pixso-relative-no-shrink pixso-flex"
                                 >
                                     <div className="frame-content-2_1631 pixso-relative-flex">
-<input type="range" min={0} max={2} step={1} value={fontScale}
- onChange={(e) => setFont(Number(e.target.value))}
- style={{ width: '100%', accentColor: 'var(--primary)' }} />
+                                        <div
+                                            id="2_1632"
+                                            className="Pixso-frame-2_1632 pixso-relative-no-shrink"
+                                        ></div>
+                                        <div
+                                            id="2_1633"
+                                            className="stroke-wrapper-2_1633 pixso-relative-no-shrink"
+                                        >
+                                            <div className="Pixso-frame-2_1633 pixso-relative-no-shrink"></div>
+                                            <div className="stroke-2_1633"></div>
+                                        </div>
+                                        <div
+                                            id="2_1634"
+                                            className="Pixso-frame-2_1634 pixso-position-relative"
+                                        ></div>
                                     </div>
                                 </div>
                                 <div
@@ -256,7 +305,6 @@ const Frame21579 = ({ themeLabel, fontLabel, theme, fontScale, remindOn, voiceOn
                         >
                             <div className="frame-content-2_1641 pixso-relative-flex">
                                 <div
-                                onClick={toggleRemind}
                                     id="2_1642"
                                     className="Pixso-frame-2_1642 pixso-relative-no-shrink pixso-flex-auto-height"
                                 >
@@ -268,7 +316,6 @@ const Frame21579 = ({ themeLabel, fontLabel, theme, fontScale, remindOn, voiceOn
                                             {"学习提醒"}
                                         </p>
                                         <div
-                                        style={{ opacity: remindOn ? 1 : 0.35 }}
                                             id="2_1644"
                                             className="Pixso-frame-2_1644 pixso-relative-no-shrink pixso-flex"
                                         >
@@ -286,7 +333,6 @@ const Frame21579 = ({ themeLabel, fontLabel, theme, fontScale, remindOn, voiceOn
                                     className="Pixso-frame-2_1646 pixso-relative-no-shrink"
                                 ></div>
                                 <div
-                                onClick={toggleVoice}
                                     id="2_1647"
                                     className="Pixso-frame-2_1647 pixso-relative-no-shrink pixso-flex-auto-height"
                                 >
@@ -298,7 +344,6 @@ const Frame21579 = ({ themeLabel, fontLabel, theme, fontScale, remindOn, voiceOn
                                             {"语音作答"}
                                         </p>
                                         <div
-                                        style={{ opacity: voiceOn ? 1 : 0.35 }}
                                             id="2_1649"
                                             className="Pixso-frame-2_1649 pixso-relative-no-shrink pixso-flex"
                                         >
@@ -316,7 +361,6 @@ const Frame21579 = ({ themeLabel, fontLabel, theme, fontScale, remindOn, voiceOn
                                     className="Pixso-frame-2_1651 pixso-relative-no-shrink"
                                 ></div>
                                 <div
-                                onClick={onClear}
                                     id="2_1652"
                                     className="Pixso-frame-2_1652 pixso-relative-no-shrink pixso-flex-auto-height"
                                 >

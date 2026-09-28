@@ -1,4 +1,4 @@
-import "./Frame2965.css";
+import "@/styles/Frame2965.css";
 const Frame2965 = () => {
     return (
         <div className="scroll-container">
