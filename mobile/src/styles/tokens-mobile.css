@@ -1,0 +1,46 @@
+/* 面霸 · 移动端设计令牌（奶油多巴胺 Cream Pop，源自设计系统总览 v0.1.0） */
+:root {
+  /* 底与面 */
+  --bg: #faf7f2;            /* 奶油白页面底 */
+  --card: #ffffff;          /* 纯白卡片 */
+  --input: #f3efe7;         /* 米白输入底 */
+  --line: #efe9de;
+
+  /* 文字 */
+  --ink: #2d2a26;           /* 深可可主文字 */
+  --ink-soft: #6b675f;      /* 次级文字 */
+  --ink-faint: #b8b3a8;     /* 占位 */
+
+  /* 品牌主色：活力紫 */
+  --primary: #6c5ce7;
+  --primary-deep: #5a4bd6;
+  --primary-soft: #efeafe;  /* 淡紫底 */
+
+  /* 多巴胺语义色（色 / 淡底） */
+  --mint: #4ecdc4;          --mint-soft: #e4f8f6;    /* 已掌握 / 答对 / 复习 */
+  --lemon: #f5c518;         --lemon-soft: #fef7dc;   /* 新学 / 进行中 / 提醒 */
+  --coral: #ff6b6b;         --coral-soft: #ffe9e9;   /* 错误 / AGAIN */
+  --sky: #4d96ff;           --sky-soft: #e8f1ff;     /* 面试 */
+
+  /* 渐变与投影 */
+  --grad-primary: linear-gradient(135deg, #6c5ce7, #8b7cf0);
+  --shadow-card: 0 8px 24px rgba(45, 42, 38, 0.08);
+  --shadow-tab: 0 -4px 24px rgba(45, 42, 38, 0.1);
+
+  /* 圆角阶梯 */
+  --r-card: 24px;
+  --r-btn: 14px;
+  --r-input: 16px;
+  --r-pill: 999px;
+
+  /* 字体 */
+  --font: 'Noto Sans SC', 'PingFang SC', 'DM Sans', -apple-system, 'Segoe UI',
+    'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* 布局 */
+  --screen-max: 430px;
+  --tabbar-h: 68px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
