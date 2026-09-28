@@ -1,47 +1,40 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-
-import { ChevronLeft } from 'lucide-react';
-import { runDetail, review } from '../api/drill';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import Frame2877 from '../frames/Frame2877';
+import { review, runDetail, sedimentToCard } from '../api/drill';
 import type { GradeView, ReviewView } from '../api/types';
-import { MarkdownLite } from '../components/MarkdownLite';
+
+const VERDICT_LABEL: Record<string, string> = { HIT: '命中', PARTIAL: '部分', MISS: '缺失' };
 
 interface ByConceptRow {
-  conceptId: number;
-  role: string;
-  pointResults: { point: string; verdict: string; evidence?: string }[];
+  pointResults: { point: string; verdict: string }[];
 }
 
-const VERDICT: Record<string, { label: string; cls: string }> = {
-  HIT: { label: '命中', cls: 'v-hit' },
-  PARTIAL: { label: '部分', cls: 'v-partial' },
-  MISS: { label: '缺失', cls: 'v-miss' },
-};
-
-const GRADE_CLS: Record<string, string> = {
-  GOOD: 'g-good',
-  EASY: 'g-easy',
-  HARD: 'g-hard',
-  MISSING: 'g-miss',
-  AGAIN: 'g-miss',
-};
-
-/** 复盘页：评级 + 评分点明细 + AI 复盘三件套（总结/思路/口诀）。 */
+/** 复盘页：数据层（评级 + AI 复盘）→ 视觉层 Frame2877（Pixso 源码直迁）。 */
 export default function ReviewScreen() {
   const { runId: runIdParam } = useParams();
-  const navigate = useNavigate();
   const runId = Number(runIdParam);
+  const navigate = useNavigate();
   const { state } = useLocation() as { state: { grade?: GradeView; stem?: string } | null };
-      // useLocation 用于读取练习列表带来的 grade 快照
 
   const [grade, setGrade] = useState<GradeView | null>(state?.grade ?? null);
   const [rv, setRv] = useState<ReviewView | null>(null);
   const [err, setErr] = useState('');
+  const [sedimenting, setSedimenting] = useState(false);
 
   useEffect(() => {
     if (!Number.isFinite(runId) || runId <= 0) return;
     if (!grade) {
-      runDetail(runId).then((d) => setGrade({ runId: d.runId, questionId: d.questionId, rawScore: d.rawScore, grade: d.grade ?? '', byConceptJson: d.byConceptJson ?? '[]' }))
+      runDetail(runId)
+        .then((d) =>
+          setGrade({
+            runId: d.runId,
+            questionId: d.questionId,
+            rawScore: d.rawScore,
+            grade: d.grade ?? '',
+            byConceptJson: d.byConceptJson ?? '[]',
+          }),
+        )
         .catch((e) => setErr(e instanceof Error ? e.message : '加载失败'));
     }
     review(runId)
@@ -50,96 +43,54 @@ export default function ReviewScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
 
-  if (!Number.isFinite(runId) || runId <= 0) {
-    return (
-      <div className="screen screen-immersive">
-        <div className="center-note">缺少练习信息，请从练习列表进入。</div>
-        <Link to="/tasks" className="back-link">返回首页</Link>
-      </div>
-    );
-  }
-  if (!grade) {
+  if (!Number.isFinite(runId) || runId <= 0 || !grade) {
     return (
       <div className="screen screen-immersive">
         <div className="center-note">{err || '加载中…'}</div>
-        <Link to="/tasks" className="back-link">返回首页</Link>
       </div>
     );
   }
 
-  let rows: { point: string; verdict: string }[] = [];
+  let rows: { point: string; verdict: 'HIT' | 'PARTIAL' | 'MISS'; verdictLabel: string }[] = [];
   try {
     const groups = JSON.parse(grade.byConceptJson ?? '[]') as ByConceptRow[];
-    rows = groups.flatMap((g) => g.pointResults.map((p) => ({ point: p.point, verdict: p.verdict })));
+    rows = groups.flatMap((g) =>
+      g.pointResults.map((p) => ({
+        point: p.point,
+        verdict: (p.verdict as 'HIT' | 'PARTIAL' | 'MISS') ?? 'MISS',
+        verdictLabel: VERDICT_LABEL[p.verdict] ?? p.verdict,
+      })),
+    );
   } catch { /* 解析失败静默 */ }
 
-  const badgeCls = GRADE_CLS[grade.grade] ?? 'g-good';
+  const sediment = async () => {
+    if (sedimenting) return;
+    setSedimenting(true);
+    setErr('');
+    try {
+      await sedimentToCard(runId);
+      navigate('/sediment');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '沉淀失败，请重试');
+    } finally {
+      setSedimenting(false);
+    }
+  };
 
   return (
-    <div className="screen screen-immersive">
-      <div className="immersive-topbar">
-        <button className="back-btn" onClick={() => navigate(-1)}>
-          <ChevronLeft size={22} />
-        </button>
-        <span style={{ fontWeight: 800 }}>复盘</span>
-      </div>
-
-      <div className="card" style={{ textAlign: 'center' }}>
-        <span className={'review-badge ' + badgeCls}>{grade.grade}</span>
-        <div className="score-big">
-          {grade.rawScore}
-          <small> 分</small>
-        </div>
-      </div>
-
-      {rows.length > 0 && (
-        <div className="card">
-          <div className="card-title">评分点明细</div>
-          {rows.map((r, i) => (
-            <div key={i} className="detail-row">
-              <span className="rv-point"><MarkdownLite text={r.point} /></span>
-              <span className={'verdict-pill ' + (VERDICT[r.verdict]?.cls ?? 'v-partial')}>
-                {VERDICT[r.verdict]?.label ?? r.verdict}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {rv && (
-        <>
-          {rv.weakPoints.length > 0 && (
-            <div className="card">
-              <div className="card-title" style={{ color: 'var(--coral)' }}>
-                对话总结 · {rv.weakPoints.length} 个欠缺
-              </div>
-              {rv.gapSummary && <div className="review-text"><MarkdownLite text={rv.gapSummary} /></div>}
-              <ul className="weak-list">
-                {rv.weakPoints.map((w, i) => (
-                  <li key={i}>
-                    <span className="weak-dot" />
-                    <span className="rv-md"><MarkdownLite text={w} /></span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {rv.approach && (
-            <div className="card">
-              <div className="card-title">解题思路</div>
-              <div className="review-text"><MarkdownLite text={rv.approach} /></div>
-            </div>
-          )}
-          {rv.mnemonic && (
-            <div className="card">
-              <div className="card-title">记忆口诀</div>
-              <div className="quote"><MarkdownLite text={rv.mnemonic} /></div>
-            </div>
-          )}
-        </>
-      )}
-
+    <div className="screen screen-immersive" style={{ paddingTop: 8 }}>
       {err && <div className="form-err">{err}</div>}
+      <Frame2877
+        score={grade.rawScore}
+        grade={grade.grade || '—'}
+        timeText=""
+        attemptText=""
+        rows={rows}
+        weak={rv?.weakPoints ?? []}
+        rv={{ mnemonic: rv?.mnemonic ?? null, approach: rv?.approach ?? null }}
+        onBack={() => navigate(-1)}
+        onCard={() => void sediment()}
+      />
     </div>
   );
 }

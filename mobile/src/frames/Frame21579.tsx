@@ -7,60 +7,6 @@ const Frame21579 = () => {
                 className="Pixso-frame-2_1579 pixso-relative-no-shrink pixso-flex"
             >
                 <div
-                    id="2_1580"
-                    className="Pixso-frame-2_1580 pixso-relative-no-shrink pixso-flex"
-                >
-                    <div className="frame-content-2_1580 pixso-relative-flex">
-                        <p
-                            id="2_1581"
-                            className="Pixso-paragraph-2_1581 pixso-relative-auto-size pixso-flex-shrink-0"
-                        >
-                            {"9:41"}
-                        </p>
-                        <div
-                            id="2_1582"
-                            className="Pixso-frame-2_1582 pixso-relative-flex-auto-size pixso-flex-shrink-0"
-                        >
-                            <div
-                                id="2_1583"
-                                className="Pixso-vector-2_1583 pixso-relative-no-shrink"
-                            ></div>
-                            <div
-                                id="2_1589"
-                                className="Pixso-vector-2_1589 pixso-relative-no-shrink"
-                            ></div>
-                            <div
-                                id="2_1594"
-                                className="Pixso-frame-2_1594 pixso-relative-no-shrink"
-                            >
-                                <div
-                                    id="2_1595"
-                                    className="Pixso-vector-2_1595"
-                                ></div>
-                                <div
-                                    id="2_1596"
-                                    className="Pixso-vector-2_1596"
-                                ></div>
-                                <div
-                                    id="2_1597"
-                                    className="Pixso-vector-2_1597"
-                                ></div>
-                                <div
-                                    id="2_1598"
-                                    className="Pixso-vector-2_1598"
-                                ></div>
-                                <div
-                                    id="2_1599"
-                                    className="stroke-wrapper-2_1599"
-                                >
-                                    <div className="Pixso-rectangle-2_1599 pixso-position-relative"></div>
-                                    <div className="stroke-2_1599"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div
                     id="2_1600"
                     className="Pixso-frame-2_1600 pixso-relative-no-shrink pixso-flex-auto-height"
                 >

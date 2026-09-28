@@ -140,3 +140,8 @@ export function historyPage(offset: number, limit = 20): Promise<RunSummaryView[
 export function debtCount(): Promise<number> {
   return apiFetch<unknown[]>('/drill/debt').then((d) => (Array.isArray(d) ? d.length : 0));
 }
+
+/** 把一次练习沉淀为知识卡（复盘页「沉淀为知识卡」）。 */
+export function sedimentToCard(runId: number): Promise<unknown> {
+  return apiFetch<unknown>(`/drill/${runId}/card`, { method: 'POST' });
+}
