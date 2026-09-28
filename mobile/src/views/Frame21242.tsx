@@ -1,5 +1,7 @@
 import "@/styles/Frame21242.css";
+import { useNavigate } from "react-router-dom";
 const Frame21242 = () => {
+    const navigate = useNavigate();
     return (
         <div className="scroll-container">
             <div
@@ -615,6 +617,7 @@ const Frame21242 = () => {
                             <div className="Pixso-frame-2_1371-content-layer">
                                 <div className="frame-content-2_1371 pixso-relative-flex">
                                     <div
+                                        onClick={() => navigate("/tasks")}
                                         id="2_1372"
                                         className="Pixso-frame-2_1372 pixso-relative-flex"
                                     >
@@ -639,6 +642,7 @@ const Frame21242 = () => {
                                         </div>
                                     </div>
                                     <div
+                                        onClick={() => navigate("/practice")}
                                         id="2_1378"
                                         className="Pixso-frame-2_1378 pixso-relative-flex"
                                     >
@@ -663,6 +667,7 @@ const Frame21242 = () => {
                                         </div>
                                     </div>
                                     <div
+                                        onClick={() => navigate("/interview")}
                                         id="2_1384"
                                         className="Pixso-frame-2_1384 pixso-relative-flex"
                                     >
@@ -699,6 +704,7 @@ const Frame21242 = () => {
                                         </div>
                                     </div>
                                     <div
+                                        onClick={() => navigate("/sediment")}
                                         id="2_1390"
                                         className="Pixso-frame-2_1390 pixso-relative-flex"
                                     >
@@ -723,6 +729,7 @@ const Frame21242 = () => {
                                         </div>
                                     </div>
                                     <div
+                                        onClick={() => navigate("/me")}
                                         id="2_1397"
                                         className="Pixso-frame-2_1397 pixso-relative-flex"
                                     >
