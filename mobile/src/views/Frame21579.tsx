@@ -1,5 +1,37 @@
 import "@/styles/Frame21579.css";
-const Frame21579 = () => {
+
+/** 设置：主题 / 字号 / 开关 / 缓存——视觉 = Pixso 模板，取值与回调由容器注入（view 不发请求）。 */
+export interface SettingsViewProps {
+    theme: "cream" | "white" | "system";
+    themeLabel: string;
+    fontScale: number;
+    fontLabel: string;
+    remindOn: boolean;
+    voiceOn: boolean;
+    cacheText: string;
+    setTheme: (t: "cream" | "white" | "system") => void;
+    setFont: (n: number) => void;
+    toggleRemind: () => void;
+    toggleVoice: () => void;
+    onBack: () => void;
+    onClear: () => void;
+}
+
+const Frame21579 = ({
+    theme,
+    themeLabel,
+    fontScale,
+    fontLabel,
+    remindOn,
+    voiceOn,
+    cacheText,
+    setTheme,
+    setFont,
+    toggleRemind,
+    toggleVoice,
+    onBack,
+    onClear,
+}: SettingsViewProps) => {
     return (
         <div className="scroll-container">
             <div
@@ -66,6 +98,7 @@ const Frame21579 = () => {
                 >
                     <div className="frame-content-2_1600 pixso-relative-flex">
                         <div
+                            onClick={onBack}
                             id="2_1601"
                             className="Pixso-frame-2_1601 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex"
                         >
@@ -117,7 +150,7 @@ const Frame21579 = () => {
                                                 id="2_1612"
                                                 className="Pixso-paragraph-2_1612 pixso-relative-auto-size pixso-flex-shrink-0"
                                             >
-                                                {"当前：奶油白天"}
+                                                {`当前：${themeLabel}`}
                                             </p>
                                         </div>
                                     </div>
@@ -128,6 +161,11 @@ const Frame21579 = () => {
                                 >
                                     <div className="frame-content-2_1613 pixso-relative-flex">
                                         <div
+                                            onClick={() => setTheme("cream")}
+                                            style={{
+                                                outline: theme === "cream" ? "2px solid var(--color-brand-purple)" : "none",
+                                                outlineOffset: 2,
+                                            }}
                                             id="2_1614"
                                             className="Pixso-frame-2_1614 pixso-relative-flex pixso-h-auto"
                                         >
@@ -163,6 +201,11 @@ const Frame21579 = () => {
                                             </div>
                                         </div>
                                         <div
+                                            onClick={() => setTheme("white")}
+                                            style={{
+                                                outline: theme === "white" ? "2px solid var(--color-brand-purple)" : "none",
+                                                outlineOffset: 2,
+                                            }}
                                             id="2_1620"
                                             className="Pixso-frame-2_1620 pixso-relative-flex pixso-h-auto"
                                         >
@@ -183,6 +226,11 @@ const Frame21579 = () => {
                                             </div>
                                         </div>
                                         <div
+                                            onClick={() => setTheme("system")}
+                                            style={{
+                                                outline: theme === "system" ? "2px solid var(--color-brand-purple)" : "none",
+                                                outlineOffset: 2,
+                                            }}
                                             id="2_1623"
                                             className="Pixso-frame-2_1623 pixso-relative-flex pixso-h-auto"
                                         >
@@ -230,7 +278,7 @@ const Frame21579 = () => {
                                                 id="2_1630"
                                                 className="Pixso-paragraph-2_1630 pixso-relative-auto-size pixso-flex-shrink-0"
                                             >
-                                                {"当前：标准"}
+                                                {`当前：${fontLabel}`}
                                             </p>
                                         </div>
                                     </div>
@@ -243,6 +291,7 @@ const Frame21579 = () => {
                                         <div
                                             id="2_1632"
                                             className="Pixso-frame-2_1632 pixso-relative-no-shrink"
+                                            style={{ width: ["30%", "50%", "80%"][fontScale] ?? "50%" }}
                                         ></div>
                                         <div
                                             id="2_1633"
@@ -263,18 +312,21 @@ const Frame21579 = () => {
                                 >
                                     <div className="frame-content-2_1635 pixso-relative-flex">
                                         <p
+                                            onClick={() => setFont(0)}
                                             id="2_1636"
                                             className="Pixso-paragraph-2_1636 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
                                             {"小"}
                                         </p>
                                         <p
+                                            onClick={() => setFont(1)}
                                             id="2_1637"
                                             className="Pixso-paragraph-2_1637 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
                                             {"标准"}
                                         </p>
                                         <p
+                                            onClick={() => setFont(2)}
                                             id="2_1638"
                                             className="Pixso-paragraph-2_1638 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
@@ -305,6 +357,7 @@ const Frame21579 = () => {
                         >
                             <div className="frame-content-2_1641 pixso-relative-flex">
                                 <div
+                                    onClick={toggleRemind}
                                     id="2_1642"
                                     className="Pixso-frame-2_1642 pixso-relative-no-shrink pixso-flex-auto-height"
                                 >
@@ -316,6 +369,7 @@ const Frame21579 = () => {
                                             {"学习提醒"}
                                         </p>
                                         <div
+                                            style={{ opacity: remindOn ? 1 : 0.35 }}
                                             id="2_1644"
                                             className="Pixso-frame-2_1644 pixso-relative-no-shrink pixso-flex"
                                         >
@@ -333,6 +387,7 @@ const Frame21579 = () => {
                                     className="Pixso-frame-2_1646 pixso-relative-no-shrink"
                                 ></div>
                                 <div
+                                    onClick={toggleVoice}
                                     id="2_1647"
                                     className="Pixso-frame-2_1647 pixso-relative-no-shrink pixso-flex-auto-height"
                                 >
@@ -344,6 +399,7 @@ const Frame21579 = () => {
                                             {"语音作答"}
                                         </p>
                                         <div
+                                            style={{ opacity: voiceOn ? 1 : 0.35 }}
                                             id="2_1649"
                                             className="Pixso-frame-2_1649 pixso-relative-no-shrink pixso-flex"
                                         >
@@ -361,6 +417,7 @@ const Frame21579 = () => {
                                     className="Pixso-frame-2_1651 pixso-relative-no-shrink"
                                 ></div>
                                 <div
+                                    onClick={onClear}
                                     id="2_1652"
                                     className="Pixso-frame-2_1652 pixso-relative-no-shrink pixso-flex-auto-height"
                                 >
@@ -379,7 +436,7 @@ const Frame21579 = () => {
                                                 id="2_1655"
                                                 className="Pixso-paragraph-2_1655 pixso-relative-auto-size pixso-flex-shrink-0"
                                             >
-                                                {"128 MB"}
+                                                {cacheText}
                                             </p>
                                         </div>
                                         <div
