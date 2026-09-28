@@ -100,6 +100,13 @@ public class HistoryService {
         return views;
     }
 
+    /** 分页版列表（最新在前，移动端懒加载用）：offset/limit 作用于按题聚合后的行。 */
+    public List<RunSummaryView> page(Long userId, int offset, int limit) {
+        List<RunSummaryView> all = list(userId);
+        if (offset >= all.size() || limit <= 0) return List.of();
+        return all.subList(offset, Math.min(all.size(), offset + limit));
+    }
+
     /** 某道题的主概念所属学习方向（供按方向过滤问答记录）。 */
     private Long planIdOf(Long questionId) {
         QuestionBank q = qbRepo.findById(questionId).orElse(null);

@@ -60,6 +60,13 @@ public class DrillStatsController {
         return historyService.list(CurrentUser.id());
     }
 
+    /** 分页历史（移动端懒加载）：最新在前；offset/limit 切片于按题聚合后的行。 */
+    @GetMapping("/history/page")
+    public List<RunSummaryView> historyPage(@RequestParam(defaultValue = "0") int offset,
+                                            @RequestParam(defaultValue = "20") int limit) {
+        return historyService.page(CurrentUser.id(), Math.max(offset, 0), Math.min(limit, 50));
+    }
+
     /** 对话线：一道题（questionId）的完整问答历史，前端点卡片后渲染 */
     @GetMapping("/history/conversation/{questionId}")
     public ConversationView conversation(@PathVariable Long questionId) {
