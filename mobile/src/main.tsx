@@ -1,6 +1,7 @@
 import { BrowserRouter } from 'react-router-dom';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import './styles/export-vars.css';
 import './styles/tokens-mobile.css';
 import './styles/app.css';
 

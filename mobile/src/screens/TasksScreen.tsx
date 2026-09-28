@@ -1,31 +1,26 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, Loader2, RefreshCw } from 'lucide-react';
-import MasteryRing from '../components/MasteryRing';
-import { today, startTask, profile } from '../api/drill';
+import Frame2394 from '../frames/Frame2394';
+import { debtCount, profile, startTask, today } from '../api/drill';
+import { userApi } from '../api/user';
 import type { DailyTaskView, TopicProfile } from '../api/types';
 
-function greeting(): string {
-  const h = new Date().getHours();
-  if (h < 6) return '夜深了';
-  if (h < 12) return '早上好';
-  if (h < 18) return '下午好';
-  return '晚上好';
-}
-
-/** 首页：学习进度总览 + 今日任务（预生成题秒开）。 */
+/** 首页：数据全部来自后端，视觉基准 = 导出 Frame2394（Pixso 源码直迁）。 */
 export default function TasksScreen() {
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<DailyTaskView[] | null>(null);
   const [topics, setTopics] = useState<TopicProfile[]>([]);
+  const [name, setName] = useState('');
+  const [debt, setDebt] = useState(0);
   const [err, setErr] = useState('');
-  const [starting, setStarting] = useState<number | null>(null);
 
   useEffect(() => {
-    Promise.all([today(), profile()])
-      .then(([t, p]) => {
+    Promise.all([today(), profile(), userApi.profile(), debtCount()])
+      .then(([t, p, u, d]) => {
         setTasks(t);
         setTopics(p);
+        setDebt(d);
+        setName(u.nickname || u.username || '同学');
       })
       .catch((e) => setErr(e instanceof Error ? e.message : '加载失败'));
   }, []);
@@ -36,92 +31,36 @@ export default function TasksScreen() {
   const notMastered = Math.max(0, concepts.length - mastered - inProgress);
   const progress = concepts.length ? Math.round((mastered / concepts.length) * 100) : 0;
 
-  const open = async (t: DailyTaskView) => {
-    if (starting !== null || t.status !== 'READY') return;
-    setStarting(t.id);
+  const open = async (taskId: number) => {
     try {
-      const view = await startTask(t.id);
+      const view = await startTask(taskId);
       navigate(`/run/${view.runId}`, { state: { view } });
     } catch (e) {
       setErr(e instanceof Error ? e.message : '开题失败，请重试');
-    } finally {
-      setStarting(null);
     }
   };
 
-  const direction = tasks?.[0]?.planTitle ?? '';
+  const list = tasks ?? [];
+  const taskSummary = `${list.length} 项 · 约 ${list.length * 8} 分钟`;
 
   return (
-    <div className="screen">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <div className="greet-title">{greeting()}</div>
-          <div className="greet-sub">🔥 连续学习 7 天</div>
-        </div>
-        {direction && <span className="direction-pill">{direction} ⌄</span>}
-      </div>
-
-      {err && <div className="form-err">{err}</div>}
-
-      <div className="card">
-        <div className="card-title">掌握度总览</div>
-        <div className="donut-row">
-          <MasteryRing mastered={mastered} inProgress={inProgress} notMastered={notMastered} />
-          <div className="legend">
-            <div className="legend-item">
-              <span className="legend-dot" style={{ background: 'var(--mint)' }} /> 已掌握 {mastered}
-            </div>
-            <div className="legend-item">
-              <span className="legend-dot" style={{ background: 'var(--lemon)' }} /> 进行中 {inProgress}
-            </div>
-            <div className="legend-item">
-              <span className="legend-dot" style={{ background: 'var(--coral)' }} /> 未掌握 {notMastered}
-            </div>
-          </div>
-        </div>
-        <div className="progress-track">
-          <div className="progress-fill" style={{ width: `${progress}%` }} />
-        </div>
-        <div className="progress-label">本月学习进度 {progress}%</div>
-      </div>
-
-      <div className="section-h">
-        今日任务 <small>{tasks ? `${tasks.length} 项` : ''}</small>
-      </div>
-
-      {tasks === null && (
-        <div className="center-note">
-          <Loader2 size={20} className="spin" /> 加载中…
-        </div>
-      )}
-      {tasks?.map((t) => (
-        <button key={t.id} className="task-card" onClick={() => open(t)} disabled={starting !== null}>
-          <div className="task-head">
-            <span className={'pill ' + (t.kind === 'REVIEW' ? 'pill-review' : 'pill-new')}>
-              {t.kind === 'REVIEW' ? '复习' : '新学'}
-            </span>
-            {t.status === 'READY' && <span className="task-status status-ready">已就绪 · 秒开</span>}
-            {t.status === 'PENDING' && (
-              <span className="task-status status-pending">
-                <RefreshCw size={12} style={{ marginRight: 4 }} />
-                生成中…
-              </span>
-            )}
-            {t.status === 'DONE' && <span className="task-status">已完成 ✓</span>}
-          </div>
-          <div className="task-title">{t.conceptName}</div>
-          {t.status === 'READY' && (
-            <div style={{ marginTop: 10, color: 'var(--primary)', fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 2 }}>
-              开始练习 <ChevronRight size={16} />
-            </div>
-          )}
-        </button>
-      ))}
-      {starting !== null && (
-        <div className="center-note">
-          <Loader2 size={18} className="spin" /> 正在开题…
-        </div>
-      )}
+    <div style={{ paddingBottom: 96 }}>
+      {err && <div className="form-err" style={{ margin: '0 20px' }}>{err}</div>}
+      <Frame2394
+        name={name}
+        streakDays={7}
+        direction={list[0]?.planTitle ?? ''}
+        mastered={mastered}
+        inProgress={inProgress}
+        notMastered={notMastered}
+        total={concepts.length}
+        unlockHint="L1 达标 50% 解锁 L2"
+        progress={progress}
+        taskSummary={taskSummary}
+        tasks={list.map((t) => ({ id: t.id, kind: t.kind, title: t.conceptName, status: t.status }))}
+        debtText={debt > 0 ? `${debt} 条未闭环作答等待收尾` : '暂无未闭环作答'}
+        onTaskClick={(id) => void open(id)}
+      />
     </div>
   );
 }
