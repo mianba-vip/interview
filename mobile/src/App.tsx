@@ -4,12 +4,14 @@ import TabBar from './components/TabBar';
 import LoginScreen from './screens/LoginScreen';
 import TasksScreen from './screens/TasksScreen';
 import RunScreen from './screens/RunScreen';
+import ReviewScreen from './screens/ReviewScreen';
+import PracticeScreen from './screens/PracticeScreen';
 import PlaceholderScreen from './screens/PlaceholderScreen';
 
 export default function App() {
   const { pathname } = useLocation();
   const authed = !!getToken();
-  const immersive = pathname.startsWith('/run/');
+  const immersive = pathname.startsWith('/run/') || pathname.startsWith('/review/');
 
   // 未登录一律回登录页（沉浸式答题页也不例外）
   if (!authed && pathname !== '/login') {
@@ -21,11 +23,12 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginScreen />} />
         <Route path="/run/:runId" element={<RunScreen />} />
+        <Route path="/review/:runId" element={<ReviewScreen />} />
         <Route path="/tasks" element={<TasksScreen />} />
-        <Route path="/practice" element={<PlaceholderScreen title="练习" note="对话式练习 · M2 里程碑开放" />} />
-        <Route path="/interview" element={<PlaceholderScreen title="面试" note="模拟面试 · M2 里程碑开放" />} />
-        <Route path="/sediment" element={<PlaceholderScreen title="沉淀" note="对话沉淀 · M2 里程碑开放" />} />
-        <Route path="/me" element={<PlaceholderScreen title="我的" note="个人中心 · M2 里程碑开放" />} />
+        <Route path="/practice" element={<PracticeScreen />} />
+        <Route path="/interview" element={<PlaceholderScreen title="面试" note="模拟面试 · 即将开放" />} />
+        <Route path="/sediment" element={<PlaceholderScreen title="沉淀" note="对话沉淀 · 即将开放" />} />
+        <Route path="/me" element={<PlaceholderScreen title="我的" note="个人中心 · 即将开放" />} />
         <Route path="*" element={<Navigate to="/tasks" replace />} />
       </Routes>
       {authed && !immersive && <TabBar />}
