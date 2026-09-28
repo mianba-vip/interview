@@ -203,9 +203,9 @@ const Frame2807 = ({
                                             <div className="frame-content-2_841 pixso-relative-flex">
                                                 <div className="Pixso-frame-2_842 pixso-relative-no-shrink pixso-flex-auto-height">
                                                     <div className="frame-content-2_842 pixso-relative-flex">
-                                                        <p className="Pixso-paragraph-2_843 pixso-relative-no-shrink pixso-h-auto">
-                                                            {m.text}
-                                                        </p>
+                                                        <div className="Pixso-paragraph-2_843 pixso-relative-no-shrink pixso-h-auto">
+                                                            <MarkdownLite text={m.text} />
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 {times[m.id] && (
@@ -237,9 +237,9 @@ const Frame2807 = ({
                                                 <p className="Pixso-paragraph-2_862 pixso-relative-auto-size pixso-flex-shrink-0">
                                                     {`AI 导师 · 追问 ${aiSeq.get(m.id) ?? 1}`}
                                                 </p>
-                                                <p className="Pixso-paragraph-2_863 pixso-relative-no-shrink pixso-h-auto">
-                                                    {m.text}
-                                                </p>
+                                                <div className="Pixso-paragraph-2_863 pixso-relative-no-shrink pixso-h-auto">
+                                                    <MarkdownLite text={m.text} />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

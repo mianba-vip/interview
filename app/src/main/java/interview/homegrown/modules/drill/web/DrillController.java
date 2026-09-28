@@ -363,9 +363,13 @@ public class DrillController {
             // 按钮已揭示 → 不再判定（直接走 reveal 讲解）；否则每轮都让 AI 判定三态 + 用户意图
             String judgeConv = support.buildConversationForJudge(allTurns);
             if (q.getResponseFormat() == ResponseFormat.CHOICE) {
+                // 选择题专属注入（不动通用判分提示词）：把标准答案键喂给判分器——
+                // 选对直接 done 满分式肯定、选错按键引导，避免按开放题逻辑对正确选项挑刺。
                 judgeConv = (judgeConv == null ? "" : judgeConv)
-                        + "\n（本题为选择题：题干内含 A-D 选项，学生直接回复选项字母即为完整作答。"
-                        + "按所选与正确选项的对错判 done/needs_guide：选错时引导思考「该选项为什么不对」，不要求逐评分点展开论述。）";
+                        + "\n（本题为选择题，标准答案是 " + correctKeys(q.getMcqOptionsJson()) + "。判定规则："
+                        + "学生所选与标准答案一致 → 直接 state=done、coverage=1.0，praise 一句简短肯定即可，不要挑刺、不要展开逐点论述；"
+                        + "所选与标准答案不一致 → state=needs_guide，guideQuestion 引导思考「标准答案为什么对、所选项错在哪」；"
+                        + "一切以标准答案为准，不要用你自己的理解推翻标准答案。学生直接回复字母即为完整作答，不要求逐评分点展开。）";
             }
             final SocraticJudge judge = (buttonReveal || !preGraded) ? null : socraticJudge.judge(
                     stem, pointsJson, judgeConv);
@@ -430,6 +434,24 @@ public class DrillController {
             if (full != null && !sink.isBroken()) { fTurn.setTutorText(full.trim()); turnRepo.save(fTurn); }
             sink.done();
         });
+    }
+
+    /** 选择题标准答案键（mcq_options 中 correct=true 的 key，如 "B"；解析失败给兜底指令文本）。 */
+    private String correctKeys(String mcqJson) {
+        try {
+            interview.homegrown.modules.drill.ai.McqOption[] opts =
+                    objectMapper.readValue(mcqJson, interview.homegrown.modules.drill.ai.McqOption[].class);
+            StringBuilder sb = new StringBuilder();
+            for (var o : opts) {
+                if (o.correct()) {
+                    if (sb.length() > 0) sb.append("/");
+                    sb.append(o.key());
+                }
+            }
+            return sb.length() > 0 ? sb.toString() : "以 options 中 correct=true 为准";
+        } catch (Exception e) {
+            return "以 options 中 correct=true 为准";
+        }
     }
 
     /**
