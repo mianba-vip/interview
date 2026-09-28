@@ -30,21 +30,49 @@ public class DrillRehearsalController {
     private final TutorGenerator tutorGenerator;
     private final DrillRunRepository runRepo;
     private final DrillTurnRepository turnRepo;
+    private final GradeResultRepository gradeRepo;
     private final ObjectMapper objectMapper;
     private final DrillSupport support;
 
     public DrillRehearsalController(RehearsalService rehearsalService, TutorGenerator tutorGenerator,
                                     DrillRunRepository runRepo, DrillTurnRepository turnRepo,
+                                    GradeResultRepository gradeRepo,
                                     ObjectMapper objectMapper, DrillSupport support) {
         this.rehearsalService = rehearsalService;
         this.tutorGenerator = tutorGenerator;
         this.runRepo = runRepo;
         this.turnRepo = turnRepo;
+        this.gradeRepo = gradeRepo;
         this.objectMapper = objectMapper;
         this.support = support;
     }
 
     // -------------------------------------------------------- REHEARSAL
+
+    /** 面试 Tab 头部统计：已考场次 + 平均分（只算已结算的正式场，追问场 sourceRunId 非空不计）。 */
+    @GetMapping("/rehearsal/summary")
+    public RehearsalSummaryView rehearsalSummary() {
+        Long uid = CurrentUser.id();
+        List<DrillRun> graded = runRepo.findByUserIdAndModeOrderByIdDesc(uid, DrillMode.REHEARSAL)
+                .stream()
+                .filter(r -> r.getStatus() == DrillRunStatus.GRADED && r.getSourceRunId() == null)
+                .toList();
+        int total = graded.size();
+        int scored = 0;
+        double sum = 0;
+        for (DrillRun r : graded) {
+            Double s = gradeRepo.findFirstByRunIdOrderByIdDesc(r.getId())
+                    .map(GradeResult::getRawScore)
+                    .map(java.math.BigDecimal::doubleValue)
+                    .orElse(null);
+            if (s != null) {
+                sum += s;
+                scored++;
+            }
+        }
+        Integer avg = scored == 0 ? null : (int) Math.round(sum / scored);
+        return new RehearsalSummaryView(total, avg);
+    }
 
     @PostMapping("/rehearsal/start")
     public RehearsalView rehearsalStart(@RequestBody(required = false) RehearsalStartRequest req) {
@@ -105,4 +133,7 @@ public class DrillRehearsalController {
         Long uid = CurrentUser.id();
         return rehearsalService.endRehearsal(uid, runId);
     }
+
+    /** 面试列表页统计视图：total=已考场次，avgScore=平均分（0 场时为 null）。 */
+    public record RehearsalSummaryView(int total, Integer avgScore) {}
 }

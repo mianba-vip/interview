@@ -145,3 +145,13 @@ export function debtCount(): Promise<number> {
 export function sedimentToCard(runId: number): Promise<unknown> {
   return apiFetch<unknown>(`/drill/${runId}/card`, { method: 'POST' });
 }
+
+export interface RehearsalSummary {
+  total: number;
+  avgScore: number | null;
+}
+
+/** 面试 Tab 头部统计：已考场次 + 平均分（0 场时 avgScore 为 null）。 */
+export function rehearsalSummary(): Promise<RehearsalSummary> {
+  return apiFetch<RehearsalSummary>('/drill/rehearsal/summary');
+}

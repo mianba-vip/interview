@@ -76,6 +76,9 @@ export function openSse(url: string, init: RequestInit, h: SseHandlers): SseStre
           } catch {
             if (payload !== '[DONE]') h.onToken?.(payload);
           }
+        } else {
+          // 其余自定义事件（start 等）交给调用方
+          h.onEvent?.(event, payload);
         }
         event = null;
       };
