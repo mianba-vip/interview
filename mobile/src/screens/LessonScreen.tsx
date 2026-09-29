@@ -4,7 +4,7 @@ import Frame2965, { type LessonMsg, type SubPointItem } from "@/views/Frame2965"
 import { lessonChat, lessonQa, lessonStream, outline, subPointPass } from "@/api/lesson";
 import type { OutlineView } from "@/api/lesson";
 import type { SseStream } from "@/api/sse";
-import { parsePillFlow, type FlowNode } from "@/components/PillFlow";
+import { parsePillFlow, type FlowGraph } from "@/components/PillFlow";
 
 const LOADING = <div style={{ minHeight: "100vh", background: "var(--color-bg-cream)" }} />;
 
@@ -52,7 +52,7 @@ const parseTime = (iso: string): string => {
 
 /** 正文里的 mermaid 段处理：解析成功 → 交给「流程示意」块；解析失败或流式尚未
  *  闭合一律从正文剥离——不再渲染半截代码/模板假数据（用户明确不要假 mermaid 图）。 */
-const splitFlow = (src: string): { text: string; flow: FlowNode[] | null } => {
+const splitFlow = (src: string): { text: string; flow: FlowGraph | null } => {
   const m = /```mermaid\s*([\s\S]*?)```/.exec(src);
   const flow = m ? parsePillFlow(m[1]) : null;
   let text = src.replace(/```mermaid\s*[\s\S]*?```/g, "").trim();
@@ -285,7 +285,7 @@ const LessonScreen = () => {
       statusText={statusText}
       thinking={streaming ? think : ""}
       bodyText={bodyText}
-      flowNodes={flow}
+      flowGraph={flow}
       messages={msgs}
       question={question}
       error={err || undefined}

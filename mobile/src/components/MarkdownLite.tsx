@@ -16,8 +16,8 @@ export function MarkdownLite({ text }: { text: string }) {
             const raw = String(children).replace(/\n$/, '');
             const m = /language-([\w+#-]+)/.exec(className ?? '');
             if (m && m[1].toLowerCase() === 'mermaid') {
-              const nodes = parsePillFlow(raw);
-              return nodes ? <PillFlow nodes={nodes} /> : <pre className="mono-fallback">{raw}</pre>;
+              const graph = parsePillFlow(raw);
+              return graph ? <PillFlow graph={graph} /> : <pre className="mono-fallback">{raw}</pre>;
             }
             if (m) {
               return <pre className="mono-block">{raw}</pre>;

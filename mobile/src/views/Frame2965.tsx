@@ -1,6 +1,6 @@
 import "@/styles/Frame2965.css";
 import { MarkdownLite } from "@/components/MarkdownLite";
-import { PillFlow, type FlowNode } from "@/components/PillFlow";
+import { PillFlow, type FlowGraph } from "@/components/PillFlow";
 
 /** 子知识点列表项：done=已达标（薄荷勾），active=正在讲解（紫色实心点）。 */
 export interface SubPointItem {
@@ -28,8 +28,8 @@ export interface Frame2965Props {
     statusText: string;
     /** 讲解正文（markdown，mermaid 段已剥离） */
     bodyText: string;
-    /** 讲解里的流程图；无则整块隐藏（不再渲染模板假数据占位） */
-    flowNodes: FlowNode[] | null;
+    /** 讲解里的流程图（节点+边，分支按转移行展示）；无则整块隐藏 */
+    flowGraph: FlowGraph | null;
     /** 生成期间的思考过程（reasoning 流式文本，生成结束清空） */
     thinking?: string;
     /** 答疑历史 + 本次新消息 */
@@ -54,7 +54,7 @@ const Frame2965 = (props: Frame2965Props) => {
         activeIndex,
         statusText,
         bodyText,
-        flowNodes,
+        flowGraph,
         thinking,
         messages,
         question,
@@ -256,7 +256,7 @@ const Frame2965 = (props: Frame2965Props) => {
                                     ) : null}
                                     {bodyText !== "" && <MarkdownLite text={bodyText} />}
                                 </div>
-                                {flowNodes && (
+                                {flowGraph && (
                                 <div
                                     id="2_1013"
                                     className="Pixso-frame-2_1013 pixso-relative-no-shrink pixso-flex-auto-height"
@@ -273,8 +273,8 @@ const Frame2965 = (props: Frame2965Props) => {
                                             className="Pixso-frame-2_1015 pixso-relative-no-shrink pixso-flex-auto-height"
                                         >
                                             <div className="frame-content-2_1015 pixso-relative-flex">
-                                                {flowNodes ? (
-                                                    <PillFlow nodes={flowNodes} />
+                                                {flowGraph ? (
+                                                    <PillFlow graph={flowGraph} />
                                                 ) : (
                                                     <>
                                                         <div
