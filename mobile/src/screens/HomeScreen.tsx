@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Frame2394 from "@/views/Frame2394";
 import brandMark from "@/assets/images/9fd906c2d28a624d7c02c25d912ab5f5b0da5b39.png";
 import { debtCount, history, profile, today } from "@/api/drill";
+import { prefetchTodayConcepts } from "@/lib/prefetch";
 import { listPlans } from "@/api/plan";
 import type { PlanView } from "@/api/plan";
 import { readActivePlanId } from "@/lib/activePlan";
@@ -63,6 +64,15 @@ const HomeScreen = () => {
       .catch((e) => setErr(e instanceof Error ? e.message : "加载失败"))
       .finally(() => setLoading(false));
   }, []);
+
+  // 每日预取：今日任务涉及概念的大纲 + 子点讲解预热进服务端缓存
+  //（每天一轮，localStorage 记录进度；延迟 2.5s 让首页先完成渲染）
+  useEffect(() => {
+    if (tasks.length === 0) return;
+    const ids = [...new Set(tasks.map((t) => t.conceptId))];
+    const t = window.setTimeout(() => void prefetchTodayConcepts(ids), 2500);
+    return () => window.clearTimeout(t);
+  }, [tasks]);
 
   // 方向列表：拿不到就留空 → 知识点清单整卡不渲染
   useEffect(() => {
