@@ -23,6 +23,12 @@ export interface Frame2807Props {
     /** 顶栏「结束并评分」：随时手动收尾（判分跳复盘） */
     onFinish?: () => void;
     finishing?: boolean;
+    /** 语音作答（设置页开关）：按住右下角麦克风说话，松开填入输入框 */
+    voiceEnabled: boolean;
+    listening: boolean;
+    onVoiceStart: () => void;
+    onVoiceEnd: () => void;
+    voiceHint?: string;
     onBack: () => void;
 }
 
@@ -45,6 +51,11 @@ const Frame2807 = ({
     onReveal,
     onFinish,
     finishing,
+    voiceEnabled,
+    listening,
+    onVoiceStart,
+    onVoiceEnd,
+    voiceHint,
     onBack,
 }: Frame2807Props) => {
     // 每条 AI 回复的序号（气泡标题「AI 导师 · 追问 N」）
@@ -336,14 +347,38 @@ const Frame2807 = ({
                                         id="2_867"
                                         className="Pixso-paragraph-2_867 pixso-relative-no-shrink pixso-h-auto"
                                     >
-                                        {"按住右下角麦克风说话，或继续输入"}
+                                        {voiceHint ?? "按住右下角麦克风说话，或继续输入"}
                                     </p>
                                 </div>
                             </div>
+                            {voiceEnabled && (
                             <div
                                 id="2_868"
+                                onPointerDown={(e) => {
+                                    if (disabled) return;
+                                    e.preventDefault();
+                                    try {
+                                        e.currentTarget.setPointerCapture(e.pointerId);
+                                    } catch {
+                                        /* 指针捕获失败仍可正常点按 */
+                                    }
+                                    onVoiceStart();
+                                }}
+                                onPointerUp={() => onVoiceEnd()}
+                                onPointerCancel={() => onVoiceEnd()}
                                 className="Pixso-frame-2_868 pixso-relative-no-shrink pixso-flex"
-                                style={{ opacity: disabled ? 0.5 : 1 }}
+                                style={{
+                                    opacity: disabled ? 0.5 : 1,
+                                    cursor: "pointer",
+                                    touchAction: "none",
+                                    borderRadius: 10,
+                                    background: listening
+                                        ? "var(--color-brand-purplesoft)"
+                                        : "transparent",
+                                    boxShadow: listening
+                                        ? "0 0 0 2px var(--color-brand-purple)"
+                                        : "none",
+                                }}
                             >
                                 <div className="frame-content-2_868 pixso-relative-flex">
                                     <div
@@ -368,6 +403,7 @@ const Frame2807 = ({
                                     </div>
                                 </div>
                             </div>
+                            )}
                             <div
                                 onClick={disabled ? undefined : onSend}
                                 id="2_873"

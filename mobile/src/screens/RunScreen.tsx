@@ -6,6 +6,8 @@ import Frame2807 from "@/views/Frame2807";
 import { chatStream, conversation, finish as finishApi, history, runDetail, startTask } from "@/api/drill";
 import type { SseStream } from "@/api/sse";
 import type { ChatMsg, ConversationView, QuestionView, RunDetailView } from "@/api/types";
+import { loadPrefs } from "@/lib/prefs";
+import { useVoiceInput } from "@/lib/voiceInput";
 
 /** 跳转状态：首页/练习开题时带 view 与已恢复的消息，深链则走 runDetail */
 interface RunNavState {
@@ -130,6 +132,13 @@ const RunScreen = () => {
   const [err, setErr] = useState("");
   const [roundNo, setRoundNo] = useState(1);
   const [elapsed, setElapsed] = useState(0);
+
+  // 语音作答：设置页开关（进入答题页时读取），按住麦克风说话、松开填入输入框
+  const [voiceOn] = useState(() => loadPrefs().voiceOn);
+  const { listening: voiceListening, start: voiceStart, stop: voiceStop } = useVoiceInput(
+    (text) => setInput((cur) => (cur ? cur.replace(/\s+$/, "") + " " + text : text)),
+    (msg) => setErr(msg),
+  );
 
   const idRef = useRef(stateMsgs.reduce((m, x) => Math.max(m, x.id), 0));
   const sseRef = useRef<SseStream | null>(null);
@@ -426,7 +435,15 @@ const RunScreen = () => {
       {isChoice ? (
         <Frame2720 {...base} />
       ) : (
-        <Frame2807 {...base} times={times} />
+        <Frame2807
+          {...base}
+          times={times}
+          voiceEnabled={voiceOn}
+          listening={voiceListening}
+          onVoiceStart={() => void voiceStart()}
+          onVoiceEnd={() => void voiceStop()}
+          voiceHint={voiceListening ? "正在聆听…松开填入输入框" : undefined}
+        />
       )}
     </>
   );
