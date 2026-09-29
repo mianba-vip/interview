@@ -56,13 +56,21 @@ jobs:
           yes | "$SM" --licenses > /dev/null || true
           "$SM" --sdk_root="$SDK" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Build web + sync + assemble debug APK
+      - name: Install mobile deps (npm ci)
         shell: bash
-        run: |
-          npm --prefix mobile ci
-          npm --prefix mobile run build
-          cd mobile && npx cap sync android
-          cd android && sh gradlew assembleDebug --no-daemon
+        run: npm --prefix mobile ci
+
+      - name: Build mobile web (VITE_API_BASE)
+        shell: bash
+        run: npm --prefix mobile run build
+
+      - name: Capacitor sync android
+        shell: bash
+        run: cd mobile && npx cap sync android
+
+      - name: Gradle assembleDebug
+        shell: bash
+        run: cd mobile/android && sh gradlew assembleDebug --no-daemon
 
       - name: Prepare artifact
         shell: bash
