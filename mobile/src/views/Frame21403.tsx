@@ -21,6 +21,8 @@ export interface MeViewProps {
     modelLabel: string; // AI 模型设置行右侧的模型名
     onSettings: () => void;
     onRow: (row: string) => void;
+    /** 技能画像卡 → 详情页 */
+    onSkills: () => void;
     onLogout: () => void;
 }
 
@@ -43,6 +45,7 @@ const Frame21403 = ({
     modelLabel,
     onSettings,
     onRow,
+    onSkills,
     onLogout,
 }: MeViewProps) => {
     const navigate = useNavigate();
@@ -393,6 +396,8 @@ const Frame21403 = ({
                             </div>
                         </div>
                         <div
+                            onClick={onSkills}
+                            style={{ cursor: "pointer" }}
                             id="2_1478"
                             className="Pixso-frame-2_1478 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex-auto-height"
                         >

@@ -153,6 +153,7 @@ const MeScreen = () => {
       modelLabel={modelLabel}
       onSettings={() => navigate("/settings")}
       onRow={onRow}
+      onSkills={() => navigate("/skills")}
       onLogout={() => {
         logout();
         navigate("/login", { replace: true });

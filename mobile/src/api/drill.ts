@@ -155,3 +155,8 @@ export interface RehearsalSummary {
 export function rehearsalSummary(): Promise<RehearsalSummary> {
   return apiFetch<RehearsalSummary>('/drill/rehearsal/summary');
 }
+
+/** 能力画像 Markdown 文档（技能画像详情页，GET /drill/profile/skill-doc）。 */
+export function skillDoc(): Promise<{ markdown: string }> {
+  return apiFetch<{ markdown: string }>('/drill/profile/skill-doc');
+}
