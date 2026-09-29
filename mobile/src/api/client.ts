@@ -37,14 +37,20 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     },
   });
 
-  if (res.status === 401) {
-    removeToken();
-    throw new ApiError(401, 401, '未登录或登录已过期');
-  }
-
   const body = (await res.json().catch(() => null)) as
     | { code?: number; message?: string; data?: T }
     | null;
+
+  if (res.status === 401) {
+    removeToken();
+    // 透出服务端原文 + 接口路径：401 可能来自安全链（token 失效）也可能是业务校验，
+    // 曾因笼统改写成「未登录或登录已过期」而无法定位真实报错。
+    // 原因暂存 sessionStorage：派发事件后自动跳回登录页，在那里展示文案。
+    const detail = `${body?.message ?? '未登录或登录已过期'}（HTTP 401 · ${path}）`;
+    try { sessionStorage.setItem('mb.authError', detail); } catch { /* ignore */ }
+    window.dispatchEvent(new CustomEvent('auth:expired'));
+    throw new ApiError(401, 401, detail);
+  }
 
   if (!res.ok) {
     throw new ApiError(res.status, body?.code, body?.message ?? `请求失败（HTTP ${res.status}）`);
