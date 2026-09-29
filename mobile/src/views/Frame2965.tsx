@@ -28,8 +28,10 @@ export interface Frame2965Props {
     statusText: string;
     /** 讲解正文（markdown，mermaid 段已剥离） */
     bodyText: string;
-    /** 讲解里的流程图；无则保留模板示意 */
+    /** 讲解里的流程图；无则整块隐藏（不再渲染模板假数据占位） */
     flowNodes: FlowNode[] | null;
+    /** 生成期间的思考过程（reasoning 流式文本，生成结束清空） */
+    thinking?: string;
     /** 答疑历史 + 本次新消息 */
     messages: LessonMsg[];
     /** 提问输入框内容 */
@@ -53,6 +55,7 @@ const Frame2965 = (props: Frame2965Props) => {
         statusText,
         bodyText,
         flowNodes,
+        thinking,
         messages,
         question,
         error,
@@ -218,8 +221,42 @@ const Frame2965 = (props: Frame2965Props) => {
                                     id="2_1012"
                                     className="Pixso-text-2_1012 pixso-relative-no-shrink pixso-h-auto"
                                 >
+                                    {thinking ? (
+                                        <div
+                                            style={{
+                                                background: "var(--color-brand-purplesoft)",
+                                                borderRadius: 12,
+                                                padding: "10px 12px",
+                                                marginBottom: 12,
+                                            }}
+                                        >
+                                            <div
+                                                style={{
+                                                    fontSize: 12,
+                                                    color: "var(--color-brand-purple)",
+                                                    marginBottom: 6,
+                                                    fontFamily: '"Noto Sans SC-Medium"',
+                                                }}
+                                            >
+                                                思考过程 · 流式生成中
+                                            </div>
+                                            <div
+                                                style={{
+                                                    fontSize: 13,
+                                                    lineHeight: 1.7,
+                                                    color: "var(--color-text-secondary)",
+                                                    whiteSpace: "pre-wrap",
+                                                    maxHeight: 180,
+                                                    overflowY: "auto",
+                                                }}
+                                            >
+                                                {thinking}
+                                            </div>
+                                        </div>
+                                    ) : null}
                                     {bodyText !== "" && <MarkdownLite text={bodyText} />}
                                 </div>
+                                {flowNodes && (
                                 <div
                                     id="2_1013"
                                     className="Pixso-frame-2_1013 pixso-relative-no-shrink pixso-flex-auto-height"
@@ -302,6 +339,7 @@ const Frame2965 = (props: Frame2965Props) => {
                                         </div>
                                     </div>
                                 </div>
+                                )}
                             </div>
                         </div>
                         <div
