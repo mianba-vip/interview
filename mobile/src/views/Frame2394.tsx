@@ -97,16 +97,6 @@ function useSentinel(onHit: () => void, version: number) {
     return setEl;
 }
 
-/** 小节头：结构与样式复用模板「今日任务」标题行（section 标题 + 右侧计数）。 */
-const sectionRow = (title: string, count: string) => (
-    <div className="Pixso-frame-2_481 pixso-relative-no-shrink pixso-flex-auto-height">
-        <div className="frame-content-2_481 pixso-relative-flex">
-            <p className="Pixso-paragraph-2_482 pixso-relative-auto-size pixso-flex-shrink-0">{title}</p>
-            <p className="Pixso-paragraph-2_483 pixso-relative-auto-size pixso-flex-shrink-0">{count}</p>
-        </div>
-    </div>
-);
-
 /** 今日任务卡：整卡→讲解页；「开始练习」直接开题；「先听讲解 →」同 state 进讲解页。 */
 const TaskCard = ({
     t,
@@ -218,12 +208,13 @@ const Frame2394 = ({
 }: Frame2394Props) => {
     const navigate = useNavigate();
     const greet = new Date().getHours() < 12 ? "早上好" : "晚上好";
-    // 今日任务分组懒渲染：复习在前，先满 10 张再补新学，触底追加
+    // 今日任务：顶部「复习/学习」分段切换，懒渲染当前栏（触底追加）
     const [taskLimit, setTaskLimit] = useState(PAGE);
+    const [taskTab, setTaskTab] = useState<"review" | "new">("review");
     const reviewTasks = tasks.filter((t) => t.kind === "REVIEW");
     const newTasks = tasks.filter((t) => t.kind !== "REVIEW");
-    const shownReview = reviewTasks.slice(0, taskLimit);
-    const shownNew = newTasks.slice(0, Math.max(0, taskLimit - shownReview.length));
+    const activeTasks = taskTab === "review" ? reviewTasks : newTasks;
+    const shownActive = activeTasks.slice(0, taskLimit);
     const taskSentinel = useSentinel(
         () => setTaskLimit((n) => (n < tasks.length ? n + PAGE : n)),
         taskLimit,
@@ -630,14 +621,54 @@ const Frame2394 = ({
                                 </p>
                             </div>
                         </div>
-                        {reviewTasks.length > 0 && sectionRow("复习", `${reviewTasks.length} 项`)}
-                        {shownReview.map((t) => (
+                        {/* 顶部切换：复习 / 学习（点击切换下方任务栏） */}
+                        <div style={{ display: "flex", gap: 8, width: "100%" }}>
+                            {([["review", "复习"], ["new", "学习"]] as const).map(([k, label]) => (
+                                <div
+                                    key={k}
+                                    onClick={() => setTaskTab(k)}
+                                    style={{
+                                        flex: 1,
+                                        textAlign: "center",
+                                        padding: "8px 0",
+                                        borderRadius: 999,
+                                        background:
+                                            taskTab === k
+                                                ? "var(--color-brand-purple)"
+                                                : "var(--color-bg-card)",
+                                        color:
+                                            taskTab === k
+                                                ? "#fff"
+                                                : "var(--color-text-secondary)",
+                                        boxShadow:
+                                            taskTab === k
+                                                ? "0 6px 16px rgba(108, 92, 231, 0.35)"
+                                                : "none",
+                                        fontSize: 14,
+                                        fontWeight: 700,
+                                        cursor: "pointer",
+                                    }}
+                                >
+                                    {`${label} ${k === "review" ? reviewTasks.length : newTasks.length}`}
+                                </div>
+                            ))}
+                        </div>
+                        {shownActive.map((t) => (
                             <TaskCard key={t.id} t={t} onLesson={onLesson} onStartTask={onStartTask} />
                         ))}
-                        {newTasks.length > 0 && sectionRow("新学", `${newTasks.length} 项`)}
-                        {shownNew.map((t) => (
-                            <TaskCard key={t.id} t={t} onLesson={onLesson} onStartTask={onStartTask} />
-                        ))}
+                        {shownActive.length === 0 && (
+                            <p
+                                style={{
+                                    width: "100%",
+                                    textAlign: "center",
+                                    fontSize: 13,
+                                    color: "var(--color-text-secondary)",
+                                    padding: "14px 0",
+                                }}
+                            >
+                                这一栏今天还没有任务
+                            </p>
+                        )}
                         <div ref={taskSentinel} />
                         <div
                             id="2_537"

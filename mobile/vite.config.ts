@@ -12,6 +12,8 @@ export default defineConfig({
   base: './',
   server: {
     host: true,
+    // Windows 下 chokidar 偶发漏文件事件（热更新出旧代码），改轮询兜底
+    watch: { usePolling: true, interval: 400 },
     proxy: {
       '/api': {
         target: 'http://103.236.92.40:23333', // 直连源站：绕过 EdgeOne 回源链路（实测每次请求多 0.7~1.5s）
