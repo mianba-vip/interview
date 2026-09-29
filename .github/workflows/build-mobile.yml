@@ -34,7 +34,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
@@ -58,11 +58,11 @@ jobs:
 
       - name: Install mobile deps (npm ci)
         shell: bash
-        run: npm --prefix mobile ci
+        run: cd mobile && npm ci
 
       - name: Build mobile web (VITE_API_BASE)
         shell: bash
-        run: npm --prefix mobile run build
+        run: cd mobile && npm run build
 
       - name: Capacitor sync android
         shell: bash
