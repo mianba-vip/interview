@@ -42,10 +42,16 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     | null;
 
   if (res.status === 401) {
+    const hadToken = !!token;
     removeToken();
-    // 透出服务端原文 + 接口路径：401 可能来自安全链（token 失效）也可能是业务校验，
-    // 曾因笼统改写成「未登录或登录已过期」而无法定位真实报错。
-    // 原因暂存 sessionStorage：派发事件后自动跳回登录页，在那里展示文案。
+    if (hadToken) {
+      // 带着 token 被拒 = 会话过期/被踢：静默回登录页即可，不把「未登录」当
+      // 报错展示（此前首次打开会先看到一屏「未登录或登录已过期」，像登录失败）
+      console.info(`[auth] 会话已失效（${path}），返回登录页`);
+      window.dispatchEvent(new CustomEvent('auth:expired'));
+      throw new ApiError(401, 401, '登录已过期');
+    }
+    // 没带 token 还401 = 意外：透出服务端原文 + 接口路径，登录页展示便于定位
     const detail = `${body?.message ?? '未登录或登录已过期'}（HTTP 401 · ${path}）`;
     try { sessionStorage.setItem('mb.authError', detail); } catch { /* ignore */ }
     window.dispatchEvent(new CustomEvent('auth:expired'));

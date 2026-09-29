@@ -1,23 +1,39 @@
 import "@/styles/Frame2341.css";
 
 export interface Frame2341Props {
+    mode: "login" | "register";
     email: string;
     password: string;
     onEmailChange: (v: string) => void;
     onPasswordChange: (v: string) => void;
+    /** 注册模式：邮箱验证码输入与获取按钮 */
+    code: string;
+    onCodeChange: (v: string) => void;
+    onGetCode: () => void;
+    codeLabel: string;
+    codeDisabled: boolean;
+    codeNote: string;
     remember: boolean;
     onToggleRemember: () => void;
     error: string;
     busy: boolean;
     onSubmit: () => void;
+    /** 底部「立即注册 / 去登录」切换链接 */
     onRegister: () => void;
 }
 
 const Frame2341 = ({
+    mode,
     email,
     password,
     onEmailChange,
     onPasswordChange,
+    code,
+    onCodeChange,
+    onGetCode,
+    codeLabel,
+    codeDisabled,
+    codeNote,
     remember,
     onToggleRemember,
     error,
@@ -207,8 +223,56 @@ const Frame2341 = ({
                                         </div>
                                     </div>
                                 </div>
+                                {mode === "register" && (
+                                    <div className="stroke-wrapper-2_375 pixso-relative-no-shrink pixso-flex">
+                                        <div className="Pixso-frame-2_375 pixso-relative-no-shrink pixso-flex"></div>
+                                        <div className="stroke-2_375"></div>
+                                        <div className="Pixso-frame-2_375-content-layer">
+                                            <div className="frame-content-2_375 pixso-relative-flex">
+                                                <input
+                                                    className="Pixso-paragraph-2_379 pixso-position-relative pixso-h-auto"
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    maxLength={6}
+                                                    value={code}
+                                                    onChange={(e) => onCodeChange(e.target.value)}
+                                                    placeholder="邮箱验证码"
+                                                    autoComplete="one-time-code"
+                                                    style={{
+                                                        flex: "1 1 0%",
+                                                        minWidth: 0,
+                                                        border: "none",
+                                                        outline: "none",
+                                                        background: "transparent",
+                                                        padding: 0,
+                                                    }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={onGetCode}
+                                                    disabled={codeDisabled}
+                                                    style={{
+                                                        border: "none",
+                                                        background: "transparent",
+                                                        cursor: codeDisabled ? "default" : "pointer",
+                                                        color: codeDisabled
+                                                            ? "var(--color-text-placeholder)"
+                                                            : "var(--color-brand-purple)",
+                                                        fontSize: 13,
+                                                        whiteSpace: "nowrap",
+                                                        padding: "6px 0",
+                                                        fontFamily: "Noto Sans SC-Regular",
+                                                    }}
+                                                >
+                                                    {codeLabel}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
+                        {mode === "login" && (
                         <div
                             id="2_385"
                             className="Pixso-frame-2_385 pixso-relative-no-shrink pixso-flex-auto-height"
@@ -242,6 +306,7 @@ const Frame2341 = ({
                                 </div>
                             </div>
                         </div>
+                        )}
                         <div
                             onClick={onSubmit}
                             id="2_389"
@@ -252,7 +317,9 @@ const Frame2341 = ({
                                     id="2_390"
                                     className="Pixso-paragraph-2_390 pixso-relative-auto-size pixso-flex-shrink-0"
                                 >
-                                    {busy ? "登录中…" : "登 录"}
+                                    {busy
+                                        ? mode === "register" ? "注册中…" : "登录中…"
+                                        : mode === "register" ? "注 册" : "登 录"}
                                 </p>
                             </div>
                         </div>
@@ -267,6 +334,17 @@ const Frame2341 = ({
                                 {error}
                             </p>
                         )}
+                        {mode === "register" && codeNote && (
+                            <p
+                                style={{
+                                    color: "var(--color-text-secondary)",
+                                    fontSize: 13,
+                                    fontFamily: "Noto Sans SC-Regular",
+                                }}
+                            >
+                                {codeNote}
+                            </p>
+                        )}
                         <div
                             onClick={onRegister}
                             id="2_391"
@@ -277,13 +355,13 @@ const Frame2341 = ({
                                     id="2_392"
                                     className="Pixso-paragraph-2_392 pixso-relative-auto-size pixso-flex-shrink-0"
                                 >
-                                    {"还没有账号？"}
+                                    {mode === "login" ? "还没有账号？" : "已有账号？"}
                                 </p>
                                 <p
                                     id="2_393"
                                     className="Pixso-paragraph-2_393 pixso-relative-auto-size pixso-flex-shrink-0"
                                 >
-                                    {"立即注册"}
+                                    {mode === "login" ? "立即注册" : "去登录"}
                                 </p>
                             </div>
                         </div>
