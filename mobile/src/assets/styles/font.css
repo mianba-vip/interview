@@ -1,21 +1,23 @@
+/* font-display: swap —— 17MB 中文字体下载/解码期间先用系统字体出字，
+   不再阻塞首屏文字渲染（此前打开 App 长时间白屏的主要原因之一）。 */
 @font-face {
-                font-family: "DM Sans-Bold"; font-style: normal; src: url('@/assets/fonts/DMSans-Bold_1.ttf'); font-weight: 700
+                font-family: "DM Sans-Bold"; font-style: normal; src: url('@/assets/fonts/DMSans-Bold_1.ttf'); font-weight: 700; font-display: swap;
             }
 @font-face {
-                font-family: "DM Sans-Medium"; font-style: normal; src: url('@/assets/fonts/DMSans-Medium_1.ttf'); font-weight: 500
+                font-family: "DM Sans-Medium"; font-style: normal; src: url('@/assets/fonts/DMSans-Medium_1.ttf'); font-weight: 500; font-display: swap;
             }
 @font-face {
-                font-family: "Noto Sans SC-SemiBold"; font-style: normal; src: url('@/assets/fonts/NotoSansSC-VariableFont_wght_2.ttf')
+                font-family: "Noto Sans SC-SemiBold"; font-style: normal; src: url('@/assets/fonts/NotoSansSC-VariableFont_wght_2.ttf'); font-display: swap;
             }
 @font-face {
-                font-family: "Noto Sans SC-Bold"; font-style: normal; src: url('@/assets/fonts/NotoSansSC-VariableFont_wght_2.ttf')
+                font-family: "Noto Sans SC-Bold"; font-style: normal; src: url('@/assets/fonts/NotoSansSC-VariableFont_wght_2.ttf'); font-display: swap;
             }
 @font-face {
-                font-family: "Noto Sans SC-Regular"; font-style: normal; src: url('@/assets/fonts/NotoSansSC-VariableFont_wght_2.ttf')
+                font-family: "Noto Sans SC-Regular"; font-style: normal; src: url('@/assets/fonts/NotoSansSC-VariableFont_wght_2.ttf'); font-display: swap;
             }
 @font-face {
-                font-family: "Noto Sans SC-ExtraBold"; font-style: normal; src: url('@/assets/fonts/NotoSansSC-VariableFont_wght_2.ttf')
+                font-family: "Noto Sans SC-ExtraBold"; font-style: normal; src: url('@/assets/fonts/NotoSansSC-VariableFont_wght_2.ttf'); font-display: swap;
             }
 @font-face {
-                font-family: "Noto Sans SC-Medium"; font-style: normal; src: url('@/assets/fonts/NotoSansSC-VariableFont_wght_2.ttf')
+                font-family: "Noto Sans SC-Medium"; font-style: normal; src: url('@/assets/fonts/NotoSansSC-VariableFont_wght_2.ttf'); font-display: swap;
             }
