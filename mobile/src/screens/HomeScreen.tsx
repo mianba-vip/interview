@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Frame2394 from "@/views/Frame2394";
-import { debtCount, history, profile, startTask, today } from "@/api/drill";
+import { debtCount, history, profile, today } from "@/api/drill";
 import { listPlans } from "@/api/plan";
 import type { PlanView } from "@/api/plan";
 import { readActivePlanId } from "@/lib/activePlan";
@@ -49,7 +49,6 @@ const HomeScreen = () => {
   const [streak, setStreak] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [tip, setTip] = useState("");
 
   useEffect(() => {
     Promise.all([today(), profile(), userApi.profile(), debtCount(), history()])
@@ -88,15 +87,9 @@ const HomeScreen = () => {
     ? dirPlan.concepts.map((c) => ({ layer: c.layer, name: c.name, masteryLevel: c.masteryLevel }))
     : undefined;
 
-  /** 开题 → 练习页 */
-  const openTask = async (taskId: number) => {
-    setTip("");
-    try {
-      const q = await startTask(taskId);
-      navigate(`/run/${q.runId}`);
-    } catch (e) {
-      setTip(e instanceof Error ? e.message : "开题失败，请重试");
-    }
+  /** 开题：秒进题面（题页内自己 startTask，含现场生成），不在首页等待 */
+  const openTask = (taskId: number) => {
+    navigate(`/run/task/${taskId}`);
   };
 
   /** 卡内「开始练习」：直接开这张卡的题 */
@@ -132,23 +125,6 @@ const HomeScreen = () => {
 
   return (
     <>
-      {tip && (
-        <div
-          onClick={() => setTip("")}
-          style={{
-            position: "fixed",
-            top: 72,
-            left: 0,
-            right: 0,
-            textAlign: "center",
-            color: "var(--color-brand-coral)",
-            fontSize: 13,
-            zIndex: 30,
-          }}
-        >
-          {tip}
-        </div>
-      )}
       <Frame2394
         name={name}
         streakDays={streak}
