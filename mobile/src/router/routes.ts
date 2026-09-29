@@ -34,6 +34,11 @@ export const routes = [
     guid: "2:720",
   },
   {
+    path: "/run/task/:taskId",
+    component: RunScreen,
+    guid: "2:720:task",
+  },
+  {
     path: "/review/:runId",
     component: ReviewScreen,
     guid: "2:877",

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import Frame2965, { type LessonMsg, type SubPointItem } from "@/views/Frame2965";
 import { lessonChat, lessonQa, lessonStream, outline, subPointPass } from "@/api/lesson";
-import { startTask } from "@/api/drill";
 import type { OutlineView } from "@/api/lesson";
 import type { SseStream } from "@/api/sse";
 import { parsePillFlow, type FlowNode } from "@/components/PillFlow";
@@ -236,8 +235,8 @@ const LessonScreen = () => {
     try {
       await subPointPass(conceptId, active, true);
       if (taskId > 0) {
-        const q = await startTask(taskId);
-        navigate(`/run/${q.runId}`);
+        // 秒进题面：题页内自己 startTask，不在这里等待
+        navigate(`/run/task/${taskId}`);
       } else {
         navigate("/practice");
       }

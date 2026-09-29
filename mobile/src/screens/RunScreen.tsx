@@ -3,7 +3,7 @@ import type { RefObject } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import Frame2720 from "@/views/Frame2720";
 import Frame2807 from "@/views/Frame2807";
-import { chatStream, conversation, finish as finishApi, history, runDetail } from "@/api/drill";
+import { chatStream, conversation, finish as finishApi, history, runDetail, startTask } from "@/api/drill";
 import type { SseStream } from "@/api/sse";
 import type { ChatMsg, ConversationView, QuestionView, RunDetailView } from "@/api/types";
 
@@ -109,8 +109,10 @@ function initialMsgs(state: RunNavState | null): ChatMsg[] {
 /** 答题页：题干 + 苏格拉底对话（SSE 流式）→ 该问终结时判分并跳复盘。
  *  responseFormat=CHOICE 走 Frame2720（单选），其余走 Frame2807（开放题），共用同一套状态。 */
 const RunScreen = () => {
-  const { runId: runIdParam } = useParams();
+  const { runId: runIdParam, taskId: taskIdParam } = useParams();
   const runId = Number(runIdParam);
+  /** 任务入口（首页/讲解页）带 taskId：不等开题接口，先渲染题面壳，页内再 startTask。 */
+  const bootTaskId = Number(taskIdParam ?? 0);
   const navigate = useNavigate();
   const { state } = useLocation() as { state: RunNavState | null };
 
@@ -122,7 +124,7 @@ const RunScreen = () => {
   const [streaming, setStreaming] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [finishing, setFinishing] = useState(false);
-  const [ready, setReady] = useState(Boolean(state?.view));
+  const [revealN, setRevealN] = useState<number | null>(null); // 题干渐显进度（null=完整显示）
   const [err, setErr] = useState("");
   const [roundNo, setRoundNo] = useState(1);
   const [elapsed, setElapsed] = useState(0);
@@ -153,11 +155,39 @@ const RunScreen = () => {
     if (el) el.scrollTop = el.scrollHeight;
   }, [msgs]);
 
-  // 取数：location.state 优先，否则 runDetail（未判分 run 无详情 → 历史对话线兜底）
+  // 题干流式渐显：开题接口一次性回全量题干，进页后按块快速揭示（约半秒出完），
+  // 让「先进页面、题目随后展开」的观感连续，不出现整页空白等待。
   useEffect(() => {
+    if (!view || revealN === null) return;
+    if (revealN >= view.stem.length) {
+      setRevealN(null);
+      return;
+    }
+    const step = Math.max(24, Math.ceil(view.stem.length / 15));
+    const t = window.setTimeout(() => setRevealN((n) => (n ?? 0) + step), 30);
+    return () => window.clearTimeout(t);
+  }, [view, revealN]);
+
+  // 取数：taskId 入口先秒进页面、页内开题（PENDING 题会现场生成，绝不能卡在上一页）；
+  // run 入口 location.state 优先，否则 runDetail（未判分 run 无详情 → 历史对话线兜底）
+  useEffect(() => {
+    if (bootTaskId > 0) {
+      let alive = true;
+      startTask(bootTaskId)
+        .then((q) => {
+          if (!alive) return;
+          setView(q);
+          if (q.stem && q.stem.length > 40) setRevealN(0);
+        })
+        .catch((e) => {
+          if (alive) setErr(e instanceof Error ? e.message : "开题失败，请重试");
+        });
+      return () => {
+        alive = false;
+      };
+    }
     if (!Number.isFinite(runId) || runId <= 0) {
       setErr("无效的作答 ID");
-      setReady(true);
       return;
     }
     let alive = true;
@@ -215,15 +245,13 @@ const RunScreen = () => {
         setView(merged);
       } catch (e) {
         if (alive) setErr(e instanceof Error ? e.message : "加载失败");
-      } finally {
-        if (alive) setReady(true);
       }
     })();
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId]);
+  }, [runId, bootTaskId]);
 
   // 判分并跳复盘（幂等：后端已 GRADED 时返回既有评分）
   const doFinish = async () => {
@@ -252,7 +280,7 @@ const RunScreen = () => {
     }
     const c = await conversation(v.questionId).catch(() => null);
     if (!c || finishingRef.current) return;
-    const cur = c.runs.find((r) => r.runId === runId);
+    const cur = c.runs.find((r) => r.runId === v.runId);
     if (cur?.status === "GRADED" && !enteredGradedRef.current) await doFinish();
   };
 
@@ -306,36 +334,56 @@ const RunScreen = () => {
     });
   };
 
-  if (!ready) {
-    return <div style={{ minHeight: "100vh", background: LOADING_BG }} />;
-  }
-
   if (!view) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: LOADING_BG,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 24,
-          textAlign: "center",
-          color: "var(--color-brand-coral)",
-          fontSize: 14,
-        }}
-      >
-        {err || "作答记录不存在"}
-      </div>
-    );
+    // 出错 → 提示；否则（开题/加载中）→ 先渲染题面壳，秒进不白屏
+    if (err) {
+      return (
+        <div
+          style={{
+            minHeight: "100vh",
+            background: LOADING_BG,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
+            textAlign: "center",
+            color: "var(--color-brand-coral)",
+            fontSize: 14,
+          }}
+        >
+          {err}
+        </div>
+      );
+    }
+    const shell: RunBase = {
+      title: "练习题",
+      category: "练习题",
+      modeLabel: "准备中…",
+      stem: bootTaskId > 0 ? "**正在为你准备题目…**" : "**加载中…**",
+      timeText: mmss(elapsed),
+      revealed: false,
+      msgs: [],
+      streaming: false,
+      input,
+      placeholder: "输入你的回答…",
+      disabled: true,
+      scrollRef,
+      onInputChange: () => undefined,
+      onSend: () => undefined,
+      onReveal: () => undefined,
+      onBack: () => navigate(-1),
+    };
+    return <Frame2720 {...shell} />;
   }
 
   const isChoice = (view.responseFormat || "").toUpperCase() === "CHOICE";
+  const stemText =
+    revealN !== null ? view.stem.slice(0, revealN) : view.stem || "";
   const base: RunBase = {
     title: stemTitle(view.stem),
     category: probeLabel(view.probeType),
     modeLabel: `${isChoice ? "单选" : "简答"} · 第 ${roundNo} 题`,
-    stem: view.stem || "",
+    stem: stemText,
     timeText: mmss(elapsed),
     revealed,
     msgs,
