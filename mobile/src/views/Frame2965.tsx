@@ -26,6 +26,8 @@ export interface Frame2965Props {
     activeIndex: number;
     /** 讲解状态：流式生成中 / 已生成… */
     statusText: string;
+    /** 生成中 → 状态行显示旋转加载动画 */
+    streaming?: boolean;
     /** 讲解正文（markdown，mermaid 段已剥离） */
     bodyText: string;
     /** 讲解里的流程图（节点+边，分支按转移行展示）；无则整块隐藏 */
@@ -53,6 +55,7 @@ const Frame2965 = (props: Frame2965Props) => {
         subPoints,
         activeIndex,
         statusText,
+        streaming,
         bodyText,
         flowGraph,
         thinking,
@@ -202,6 +205,12 @@ const Frame2965 = (props: Frame2965Props) => {
                                                 id="2_1005"
                                                 className="Pixso-vector-2_1005 pixso-relative-no-shrink"
                                             ></div>
+                                            {streaming ? (
+                                                <div
+                                                    className="mb-spin"
+                                                    style={{ width: 14, height: 14, borderWidth: 2 }}
+                                                />
+                                            ) : null}
                                             <p
                                                 id="2_1010"
                                                 className="Pixso-paragraph-2_1010 pixso-relative-auto-size pixso-flex-shrink-0"
