@@ -38,14 +38,23 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
+      # 不依赖第三方 action：优先用 runner 自带 cmdline-tools，缺了就现场装（runner 在海外可直连 dl.google）
       - name: Install Android SDK packages
         shell: bash
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -f "$SM" ]; then
+            mkdir -p "$SDK/cmdline-tools"
+            curl -fsSL -o /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            unzip -q /tmp/cmdline-tools.zip -d "$SDK/cmdline-tools"
+            rm -rf "$SDK/cmdline-tools/latest"
+            mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+            SM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          yes | "$SM" --licenses > /dev/null || true
+          "$SM" --sdk_root="$SDK" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Build web + sync + assemble debug APK
         shell: bash
