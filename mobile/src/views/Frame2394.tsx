@@ -57,23 +57,6 @@ export interface Frame2394Props {
     onPoint?: (conceptId: number) => void;
 }
 
-type PointRow =
-    | { kind: "head"; layer: number; count: number }
-    | { kind: "pt"; conceptId: number; name: string; masteryLevel: number };
-
-/** 知识点按 layer 分组扁平化：小节头 + 知识点行。 */
-function buildPointRows(points?: HomePointItem[]): PointRow[] {
-    const rows: PointRow[] = [];
-    if (!points?.length) return rows;
-    const layers = [...new Set(points.map((p) => p.layer))].sort((a, b) => a - b);
-    for (const l of layers) {
-        const list = points.filter((p) => p.layer === l);
-        rows.push({ kind: "head", layer: l, count: list.length });
-        for (const p of list) rows.push({ kind: "pt", conceptId: p.conceptId, name: p.name, masteryLevel: p.masteryLevel });
-    }
-    return rows;
-}
-
 /** 底部哨兵懒加载：root = 可滚中栏 2_415（挂载后取，取不到退回视口）；version 变了重挂观察器继续补一页。 */
 function useSentinel(onHit: () => void, version: number) {
     const [el, setEl] = useState<HTMLDivElement | null>(null);
@@ -219,16 +202,21 @@ const Frame2394 = ({
         () => setTaskLimit((n) => (n < tasks.length ? n + PAGE : n)),
         taskLimit,
     );
-    // 知识点清单：折叠/展开，展开后 30 行一页懒渲染
+    // 知识点清单：折叠/展开；展开后先点选层级（L1…Ln 按钮），只展示该层知识点（30 行一页懒渲染）
     const [ptsOpen, setPtsOpen] = useState(false);
     const [ptLimit, setPtLimit] = useState(PT_PAGE);
-    const pointRows = buildPointRows(points);
-    const pointSentinel = useSentinel(
-        () => setPtLimit((n) => (n < pointRows.length ? n + PT_PAGE : n)),
-        ptLimit,
-    );
+    const [ptLayer, setPtLayer] = useState<number | null>(null);
     const ptLayers = [...new Set((points ?? []).map((p) => p.layer))].sort((a, b) => a - b);
     const layerText = ptLayers.length ? `L${ptLayers[0]}–L${ptLayers[ptLayers.length - 1]}` : "";
+    // 当前选中层：缺省第一层；切换方向导致该层不存在时自动回落
+    const activeLayer = ptLayer !== null && ptLayers.includes(ptLayer) ? ptLayer : (ptLayers[0] ?? null);
+    const layerRows = (points ?? [])
+        .filter((p) => p.layer === activeLayer)
+        .map((p) => ({ conceptId: p.conceptId, name: p.name, masteryLevel: p.masteryLevel }));
+    const pointSentinel = useSentinel(
+        () => setPtLimit((n) => (n < layerRows.length ? n + PT_PAGE : n)),
+        ptLimit,
+    );
     return (
         <div className="scroll-container">
             <div
@@ -564,27 +552,68 @@ const Frame2394 = ({
                                 </div>
                                 {ptsOpen && (
                                 <>
-                                    {pointRows.slice(0, ptLimit).map((r, i) =>
-                                        r.kind === "head" ? (
-                                            <div
-                                                key={`L${r.layer}`}
-                                                className="frame-content-2_439 pixso-relative-flex"
+                                    {/* 层级选择按钮：L1…Ln，选中紫色高亮，切换后只展示该层知识点 */}
+                                    <div
+                                        style={{
+                                            display: "flex",
+                                            flexWrap: "wrap",
+                                            gap: 8,
+                                            padding: "2px 0 10px",
+                                        }}
+                                    >
+                                        {ptLayers.map((l) => (
+                                            <button
+                                                key={l}
+                                                type="button"
+                                                onClick={() => {
+                                                    setPtLayer(l);
+                                                    setPtLimit(PT_PAGE);
+                                                }}
+                                                style={{
+                                                    border: "none",
+                                                    cursor: "pointer",
+                                                    padding: "6px 16px",
+                                                    borderRadius: 999,
+                                                    fontSize: 13,
+                                                    fontFamily:
+                                                        l === activeLayer
+                                                            ? '"Noto Sans SC-Bold"'
+                                                            : '"Noto Sans SC-Regular"',
+                                                    color:
+                                                        l === activeLayer
+                                                            ? "#fff"
+                                                            : "var(--color-text-secondary)",
+                                                    background:
+                                                        l === activeLayer
+                                                            ? "var(--color-brand-purple)"
+                                                            : "var(--color-bg-input)",
+                                                }}
                                             >
-                                                <p className="Pixso-paragraph-2_482 pixso-relative-auto-size pixso-flex-shrink-0">
-                                                    {`L${r.layer}`}
-                                                </p>
-                                                <p className="Pixso-paragraph-2_483 pixso-relative-auto-size pixso-flex-shrink-0">
-                                                    {`${r.count} 个`}
-                                                </p>
-                                            </div>
-                                        ) : (
+                                                {`L${l}`}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {layerRows.length === 0 ? (
+                                        <p
+                                            style={{
+                                                fontSize: 13,
+                                                color: "var(--color-text-secondary)",
+                                                padding: "4px 0 10px",
+                                            }}
+                                        >
+                                            {"该层级暂无知识点"}
+                                        </p>
+                                    ) : (
+                                        layerRows.slice(0, ptLimit).map((r, i) => (
                                             <div
-                                                key={`P${i}`}
+                                                key={`P${r.conceptId}-${i}`}
                                                 onClick={() => onPoint?.(r.conceptId)}
                                                 style={{ cursor: "pointer" }}
                                                 className="frame-content-2_439 pixso-relative-flex"
                                             >
-                                                <p className="Pixso-paragraph-2_492 pixso-relative-auto-size">{r.name}</p>
+                                                <p className="Pixso-paragraph-2_492 pixso-relative-auto-size">
+                                                    {r.name}
+                                                </p>
                                                 <span
                                                     style={{
                                                         width: 8,
@@ -594,7 +623,7 @@ const Frame2394 = ({
                                                     }}
                                                 />
                                             </div>
-                                        ),
+                                        ))
                                     )}
                                     <div ref={pointSentinel} />
                                 </>

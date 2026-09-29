@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Frame2394 from "@/views/Frame2394";
+import brandMark from "@/assets/images/9fd906c2d28a624d7c02c25d912ab5f5b0da5b39.png";
 import { debtCount, history, profile, today } from "@/api/drill";
 import { listPlans } from "@/api/plan";
 import type { PlanView } from "@/api/plan";
@@ -79,9 +80,26 @@ const HomeScreen = () => {
   /** 当前方向：readActivePlanId 命中列表，否则取第一个 */
   const activeId = readActivePlanId();
   const dirPlan = plans.find((p) => p.id === activeId) ?? plans[0] ?? null;
+
+  // 首页隐藏规则：① 已完成（DONE）的复习/学习任务不再展示；
+  // ② 概念的子知识点全部通关（completed ⊇ subPoints）→ 该概念整体隐藏。
+  // 数据取自已加载的 listPlans（subPoints/completedSubPoints 由服务端算好，零额外请求；
+  // 服务端只解析已缓存的大纲，不会触发 LLM 现场拆解）。
+  const clearedConcepts = new Set<number>();
+  for (const p of plans) {
+    for (const c of p.concepts) {
+      if (c.subPoints.length > 0 && c.subPoints.every((sp) => c.completedSubPoints.includes(sp))) {
+        clearedConcepts.add(c.id);
+      }
+    }
+  }
+  const visibleTasks = tasks.filter(
+    (t) => t.status !== "DONE" && !clearedConcepts.has(t.conceptId),
+  );
+
   /** 按方向过滤任务；方向对不上时全量兜底（防止方向不匹配时首页空掉） */
-  const hitId = dirPlan && tasks.some((t) => t.planId === dirPlan.id) ? dirPlan.id : null;
-  const shownTasks = hitId === null ? tasks : tasks.filter((t) => t.planId === hitId);
+  const hitId = dirPlan && visibleTasks.some((t) => t.planId === dirPlan.id) ? dirPlan.id : null;
+  const shownTasks = hitId === null ? visibleTasks : visibleTasks.filter((t) => t.planId === hitId);
   /** 知识点清单：当前方向全部层级；方向拿不到就不传，整卡不渲染 */
   const points = dirPlan?.concepts.length
     ? dirPlan.concepts.map((c) => ({
@@ -113,7 +131,25 @@ const HomeScreen = () => {
   };
 
   if (loading) {
-    return <div style={{ minHeight: "100vh", background: "var(--color-bg-cream)" }} />;
+    // 品牌加载态：开屏图淡出后衔接首页数据请求，避免整屏空奶油色干等
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "var(--color-bg-cream)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 14,
+        }}
+      >
+        <img src={brandMark} alt="" width={64} height={64} style={{ borderRadius: 15 }} />
+        <p style={{ fontSize: 13, color: "var(--color-text-secondary)", letterSpacing: 2 }}>
+          正在加载今日任务…
+        </p>
+      </div>
+    );
   }
   if (err) {
     return (
