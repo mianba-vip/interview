@@ -1,12 +1,32 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import Frame2965, { type LessonMsg, type SubPointItem } from "@/views/Frame2965";
+import brandMark from "@/assets/images/9fd906c2d28a624d7c02c25d912ab5f5b0da5b39.png";
 import { lessonChat, lessonQa, lessonStream, outline, subPointPass } from "@/api/lesson";
 import type { OutlineView } from "@/api/lesson";
 import type { SseStream } from "@/api/sse";
 import { parsePillFlow, type FlowGraph } from "@/components/PillFlow";
 
-const LOADING = <div style={{ minHeight: "100vh", background: "var(--color-bg-cream)" }} />;
+/** 大纲/子知识点加载态：品牌标 + 旋转动画（此前是整屏空奶油色干等）。 */
+const LOADING = (
+  <div
+    style={{
+      minHeight: "100vh",
+      background: "var(--color-bg-cream)",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 14,
+    }}
+  >
+    <img src={brandMark} alt="" width={64} height={64} style={{ borderRadius: 15 }} />
+    <div className="mb-spin" />
+    <p style={{ fontSize: 13, color: "var(--color-text-secondary)", letterSpacing: 2 }}>
+      正在加载子知识点…
+    </p>
+  </div>
+);
 
 const failBox = (text: string, onBack: () => void) => (
   <div
@@ -283,6 +303,7 @@ const LessonScreen = () => {
       subPoints={subPoints}
       activeIndex={activeIndex}
       statusText={statusText}
+      streaming={streaming}
       thinking={streaming ? think : ""}
       bodyText={bodyText}
       flowGraph={flow}

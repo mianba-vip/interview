@@ -21,6 +21,21 @@ body {
   background: var(--color-bg-cream);
 }
 
+/* 通用加载动画（子知识点/讲解加载期） */
+.mb-spin {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2.5px solid var(--color-brand-purplesoft);
+  border-top-color: var(--color-brand-purple);
+  animation: mbs-rotate 0.9s linear infinite;
+}
+@keyframes mbs-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* 设计稿自带的假状态栏（9:41 + 信号/电池图标）在真机一律隐藏：
    顶部时间/电量交给系统状态栏显示真实信息 */
 .Pixso-frame-2_345,
