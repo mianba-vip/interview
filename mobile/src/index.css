@@ -14,4 +14,21 @@ body {
   width: 100%;
   overflow: hidden;
   position: relative;
+  /* 为真实手机状态栏留出安全区：Capacitor(edge-to-edge 真机) 注入 --safe-area-inset-*，
+     浏览器/不透传模式回退 env()，两者皆无时为 0（无副作用） */
+  padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  /* 安全区条带与主题底色一致（theme-color #FAF7F2），避免状态栏后方露白 */
+  background: var(--color-bg-cream);
+}
+
+/* 设计稿自带的假状态栏（9:41 + 信号/电池图标）在真机一律隐藏：
+   顶部时间/电量交给系统状态栏显示真实信息 */
+.Pixso-frame-2_345,
+.Pixso-frame-2_395,
+.Pixso-frame-2_580,
+.Pixso-frame-2_1052,
+.Pixso-frame-2_1243,
+.Pixso-frame-2_1404,
+.Pixso-frame-2_1580 {
+  display: none !important;
 }

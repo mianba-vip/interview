@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Frame2341 from "@/views/Frame2341";
 import { login } from "@/api/auth";
@@ -28,6 +28,15 @@ const LoginScreen = () => {
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // 会话失效被自动踢回登录页时，展示 client.ts 暂存的真实 401 原因（接口路径 + 服务端原文）
+  useEffect(() => {
+    const saved = sessionStorage.getItem("mb.authError");
+    if (saved) {
+      sessionStorage.removeItem("mb.authError");
+      setError(saved);
+    }
+  }, []);
 
   const submit = async () => {
     if (busy) return;
