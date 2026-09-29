@@ -20,6 +20,9 @@ export interface Frame2807Props {
     onInputChange: (v: string) => void;
     onSend: () => void;
     onReveal: () => void;
+    /** 顶栏「结束并评分」：随时手动收尾（判分跳复盘） */
+    onFinish?: () => void;
+    finishing?: boolean;
     onBack: () => void;
 }
 
@@ -40,6 +43,8 @@ const Frame2807 = ({
     onInputChange,
     onSend,
     onReveal,
+    onFinish,
+    finishing,
     onBack,
 }: Frame2807Props) => {
     // 每条 AI 回复的序号（气泡标题「AI 导师 · 追问 N」）
@@ -110,6 +115,18 @@ const Frame2807 = ({
                                             className="Pixso-paragraph-2_824 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
                                             {"看答案"}
+                                        </p>
+                                    </div>
+                                    <div className="stroke-2_820"></div>
+                                </div>
+                                <div
+                                    onClick={finishing ? undefined : onFinish}
+                                    style={{ marginLeft: 8, opacity: finishing ? 0.6 : 1, cursor: "pointer" }}
+                                    className="stroke-wrapper-2_820 pixso-relative-flex-auto-size pixso-flex-shrink-0"
+                                >
+                                    <div className="Pixso-frame-2_820 pixso-relative-no-shrink pixso-flex">
+                                        <p className="Pixso-paragraph-2_824 pixso-relative-auto-size pixso-flex-shrink-0">
+                                            {finishing ? "判分中…" : "结束并评分"}
                                         </p>
                                     </div>
                                     <div className="stroke-2_820"></div>

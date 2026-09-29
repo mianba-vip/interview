@@ -19,6 +19,9 @@ export interface Frame2720Props {
     onInputChange: (v: string) => void;
     onSend: () => void;
     onReveal: () => void;
+    /** 顶栏「结束并评分」：随时手动收尾（判分跳复盘） */
+    onFinish?: () => void;
+    finishing?: boolean;
     onBack: () => void;
 }
 
@@ -38,6 +41,8 @@ const Frame2720 = ({
     onInputChange,
     onSend,
     onReveal,
+    onFinish,
+    finishing,
     onBack,
 }: Frame2720Props) => {
     return (
@@ -102,6 +107,18 @@ const Frame2720 = ({
                                             className="Pixso-paragraph-2_737 pixso-relative-auto-size pixso-flex-shrink-0"
                                         >
                                             {"看答案"}
+                                        </p>
+                                    </div>
+                                    <div className="stroke-2_733"></div>
+                                </div>
+                                <div
+                                    onClick={finishing ? undefined : onFinish}
+                                    style={{ marginLeft: 8, opacity: finishing ? 0.6 : 1, cursor: "pointer" }}
+                                    className="stroke-wrapper-2_733 pixso-relative-flex-auto-size pixso-flex-shrink-0"
+                                >
+                                    <div className="Pixso-frame-2_733 pixso-relative-no-shrink pixso-flex">
+                                        <p className="Pixso-paragraph-2_737 pixso-relative-auto-size pixso-flex-shrink-0">
+                                            {finishing ? "判分中…" : "结束并评分"}
                                         </p>
                                     </div>
                                     <div className="stroke-2_733"></div>

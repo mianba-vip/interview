@@ -84,7 +84,12 @@ const HomeScreen = () => {
   const shownTasks = hitId === null ? tasks : tasks.filter((t) => t.planId === hitId);
   /** 知识点清单：当前方向全部层级；方向拿不到就不传，整卡不渲染 */
   const points = dirPlan?.concepts.length
-    ? dirPlan.concepts.map((c) => ({ layer: c.layer, name: c.name, masteryLevel: c.masteryLevel }))
+    ? dirPlan.concepts.map((c) => ({
+        conceptId: c.id,
+        layer: c.layer,
+        name: c.name,
+        masteryLevel: c.masteryLevel,
+      }))
     : undefined;
 
   /** 开题：秒进题面（题页内自己 startTask，含现场生成），不在首页等待 */
@@ -100,6 +105,11 @@ const HomeScreen = () => {
   /** 卡片主体 /「先听讲解 →」：带概念、子点与任务进讲解页 */
   const onLesson = (conceptId: number, subPoint: string | null, taskId: number) => {
     navigate("/lesson", { state: { conceptId, subPoint: subPoint ?? undefined, taskId } });
+  };
+
+  /** 知识点清单行点击 → 进该知识点的讲解页（子点由讲解页大纲自动选首个） */
+  const onPoint = (conceptId: number) => {
+    navigate("/lesson", { state: { conceptId } });
   };
 
   if (loading) {
@@ -149,6 +159,7 @@ const HomeScreen = () => {
         debtText={debt > 0 ? `${debt} 条未闭环作答等待收尾` : "暂无未闭环作答"}
         onStartTask={onStartTask}
         onLesson={onLesson}
+        onPoint={onPoint}
       />
     </>
   );
