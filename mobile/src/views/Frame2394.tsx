@@ -28,6 +28,7 @@ export interface HomeTaskItem {
 
 /** 知识点清单一行（来自当前方向 concepts，扁平化后懒渲染）。 */
 export interface HomePointItem {
+    conceptId: number;
     layer: number;
     name: string;
     masteryLevel: number;
@@ -52,11 +53,13 @@ export interface Frame2394Props {
     onLesson?: (conceptId: number, subPoint: string | null, taskId: number) => void;
     /** 卡内「开始练习」：直接开题 */
     onStartTask?: (id: number) => void;
+    /** 知识点清单行点击 → 进该知识点的讲解页 */
+    onPoint?: (conceptId: number) => void;
 }
 
 type PointRow =
     | { kind: "head"; layer: number; count: number }
-    | { kind: "pt"; name: string; masteryLevel: number };
+    | { kind: "pt"; conceptId: number; name: string; masteryLevel: number };
 
 /** 知识点按 layer 分组扁平化：小节头 + 知识点行。 */
 function buildPointRows(points?: HomePointItem[]): PointRow[] {
@@ -66,7 +69,7 @@ function buildPointRows(points?: HomePointItem[]): PointRow[] {
     for (const l of layers) {
         const list = points.filter((p) => p.layer === l);
         rows.push({ kind: "head", layer: l, count: list.length });
-        for (const p of list) rows.push({ kind: "pt", name: p.name, masteryLevel: p.masteryLevel });
+        for (const p of list) rows.push({ kind: "pt", conceptId: p.conceptId, name: p.name, masteryLevel: p.masteryLevel });
     }
     return rows;
 }
@@ -211,6 +214,7 @@ const Frame2394 = ({
     points,
     onLesson,
     onStartTask,
+    onPoint,
 }: Frame2394Props) => {
     const navigate = useNavigate();
     const greet = new Date().getHours() < 12 ? "早上好" : "晚上好";
@@ -585,6 +589,8 @@ const Frame2394 = ({
                                         ) : (
                                             <div
                                                 key={`P${i}`}
+                                                onClick={() => onPoint?.(r.conceptId)}
+                                                style={{ cursor: "pointer" }}
                                                 className="frame-content-2_439 pixso-relative-flex"
                                             >
                                                 <p className="Pixso-paragraph-2_492 pixso-relative-auto-size">{r.name}</p>

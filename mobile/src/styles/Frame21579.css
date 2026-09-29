@@ -385,7 +385,7 @@
   height: 100%;
   border-radius: 16px 16px 16px 16px;
   z-index: 0;
-  background-image: url("data:image/svg+xml;utf8,%3Csvg%20viewBox%3D'0%200%2096%2064'%20preserveAspectRatio%3D'none'%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%0A%20%20%20%20%20%20%3Cdefs%3E%0A%20%20%20%20%20%20%20%20%3ClinearGradient%20id%3D'grad'%20gradientUnits%3D'objectBoundingBox'%20x1%3D'0'%20y1%3D'0.5'%20x2%3D'1'%20y2%3D'0.5'%20gradientTransform%3D'matrix(1.0000%2C%200.0000%2C%200.0000%2C%201.0000%2C%200.0000%2C%200.0000)'%3E%0A%20%20%20%20%20%20%20%20%20%20%0A%20%20%20%20%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%20%20%3C%2Fdefs%3E%0A%20%20%20%20%20%20%3Crect%20width%3D'100%25'%20height%3D'100%25'%20fill%3D'url(%23grad)'%2F%3E%0A%20%20%20%20%3C%2Fsvg%3E");
+  background-image: linear-gradient(135deg, var(--color-brand-purple), var(--color-brand-purplelight));
   background-position: center;
 }
 

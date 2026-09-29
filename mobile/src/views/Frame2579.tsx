@@ -60,6 +60,9 @@ export interface Frame2579Props {
     total: number;
     ongoing: PracticeOngoingItem[];
     history: PracticeHistoryItem[];
+    /** 历史模糊搜索：受控关键词（容器已过滤好 history 传入） */
+    searchText: string;
+    onSearchText: (v: string) => void;
     onOngoingClick?: (runId: number) => void;
     onHistoryClick?: (runId: number) => void;
     sentinelRef: Ref<HTMLDivElement>;
@@ -70,6 +73,8 @@ const Frame2579 = ({
     total,
     ongoing,
     history,
+    searchText,
+    onSearchText,
     onOngoingClick,
     onHistoryClick,
     sentinelRef,
@@ -140,7 +145,7 @@ const Frame2579 = ({
                     className="Pixso-frame-2_600 pixso-relative-no-shrink pixso-flex-auto-height"
                     style={{ overflowY: "auto" }}
                 >
-                    <div className="frame-content-2_600 pixso-relative-flex">
+                    <div className="frame-content-2_600 pixso-relative-flex" style={{ gap: 8 }}>
                         <div
                             id="2_601"
                             className="Pixso-frame-2_601 pixso-relative-no-shrink pixso-flex-auto-height"
@@ -289,10 +294,46 @@ const Frame2579 = ({
                                     id="2_630"
                                     className="Pixso-paragraph-2_630 pixso-relative-auto-size pixso-flex-shrink-0"
                                 >
-                                    {`全部 ${total} 次`}
+                                    {searchText.trim() ? `匹配 ${total} 条` : `全部 ${total} 次`}
                                 </p>
                             </div>
                         </div>
+                        <div
+                            style={{
+                                width: "100%",
+                                boxSizing: "border-box",
+                                background: "var(--color-bg-input)",
+                                borderRadius: 14,
+                                padding: "9px 14px",
+                            }}
+                        >
+                            <input
+                                value={searchText}
+                                onChange={(e) => onSearchText(e.target.value)}
+                                placeholder="搜索历史练习（按题干模糊匹配）"
+                                style={{
+                                    width: "100%",
+                                    border: "none",
+                                    outline: "none",
+                                    background: "transparent",
+                                    fontSize: 14,
+                                    color: "var(--color-text-primary)",
+                                }}
+                            />
+                        </div>
+                        {history.length === 0 && searchText.trim() && (
+                            <p
+                                style={{
+                                    width: "100%",
+                                    textAlign: "center",
+                                    fontSize: 13,
+                                    color: "var(--color-text-secondary)",
+                                    padding: "10px 0",
+                                }}
+                            >
+                                没有匹配的历史练习
+                            </p>
+                        )}
                         {history.map((h) => (
                         <div
                             key={h.runId}

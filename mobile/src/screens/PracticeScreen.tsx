@@ -32,6 +32,7 @@ const PracticeScreen = () => {
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState(""); // 历史模糊搜索关键词
   const sentinelRef = useRef<HTMLDivElement>(null);
   const offsetRef = useRef(0);
   const hasMoreRef = useRef(true);
@@ -78,6 +79,11 @@ const PracticeScreen = () => {
 
   const ongoing = items.filter((x) => x.status === "ANSWERING" || x.status === "READY");
   const graded = items.filter((x) => x.status === "GRADED");
+  /** 历史模糊搜索：去掉 markdown 记号后按题干子串匹配（大小写不敏感），作用于已加载页并可继续触底加载 */
+  const needle = q.trim().toLowerCase().replace(/[#*>`_~]/g, "");
+  const gradedShown = needle
+    ? graded.filter((r) => r.stem.replace(/[#*>`_~]/g, "").toLowerCase().includes(needle))
+    : graded;
 
   // 进行中条目补拉会话，用于「第 N 轮对话中 / 对话轮次」
   useEffect(() => {
@@ -174,14 +180,16 @@ const PracticeScreen = () => {
       )}
       <Frame2579
         weekCount={weekCountOf(all)}
-        total={all.filter((x) => x.status === "GRADED").length}
+        total={gradedShown.length}
+        searchText={q}
+        onSearchText={setQ}
         ongoing={ongoing.map((r) => ({
           runId: r.runId,
           title: r.stem,
           round: roundOf(r),
           minutes: minutesOf(r),
         }))}
-        history={graded.map((r) => ({
+        history={gradedShown.map((r) => ({
           runId: r.runId,
           stem: r.stem,
           answeredAt: r.answeredAt,

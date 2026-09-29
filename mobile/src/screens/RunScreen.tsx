@@ -32,6 +32,8 @@ interface RunBase {
   onInputChange: (v: string) => void;
   onSend: () => void;
   onReveal: () => void;
+  onFinish?: () => void;
+  finishing?: boolean;
   onBack: () => void;
 }
 
@@ -395,6 +397,8 @@ const RunScreen = () => {
     onInputChange: setInput,
     onSend: () => send(false),
     onReveal: () => send(true),
+    onFinish: () => void doFinish(),
+    finishing,
     onBack: () => navigate(-1),
   };
 
