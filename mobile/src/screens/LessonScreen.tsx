@@ -50,13 +50,15 @@ const parseTime = (iso: string): string => {
   return Number.isNaN(d.getTime()) ? "" : hm(d);
 };
 
-/** 抽出正文里的 mermaid 流程段：能解析成药丸流就从正文剥离，交给「流程示意」块。 */
+/** 正文里的 mermaid 段处理：解析成功 → 交给「流程示意」块；解析失败或流式尚未
+ *  闭合一律从正文剥离——不再渲染半截代码/模板假数据（用户明确不要假 mermaid 图）。 */
 const splitFlow = (src: string): { text: string; flow: FlowNode[] | null } => {
   const m = /```mermaid\s*([\s\S]*?)```/.exec(src);
-  if (!m) return { text: src, flow: null };
-  const flow = parsePillFlow(m[1]);
-  if (!flow) return { text: src, flow: null };
-  return { text: src.replace(m[0], "").trim(), flow };
+  const flow = m ? parsePillFlow(m[1]) : null;
+  let text = src.replace(/```mermaid\s*[\s\S]*?```/g, "").trim();
+  // 流式期间 mermaid 尚未闭合：从 ```mermaid 剥到末尾，避免半截代码渲染成乱码块
+  text = text.replace(/```mermaid[\s\S]*$/, "").trim();
+  return { text, flow };
 };
 
 /** 讲解页：入参 conceptId/subPoint（state 或 ?query），首载大纲 → 逐子点流式讲解 + 答疑。 */
@@ -84,6 +86,9 @@ const LessonScreen = () => {
   const [chatBusy, setChatBusy] = useState(false);
   const [err, setErr] = useState("");
   const [passBusy, setPassBusy] = useState(false);
+  /** 生成期间的思考过程（reasoning 流式文本）：替代原来的模板假图占位 */
+  const [think, setThink] = useState("");
+  const thinkRef = useRef("");
 
   const textsRef = useRef<Record<string, string>>({});
   const lessonRef = useRef<SseStream | null>(null);
@@ -131,6 +136,8 @@ const LessonScreen = () => {
     }
     setStreaming(true);
     setErr("");
+    thinkRef.current = "";
+    setThink("");
     lessonRef.current?.cancel();
     lessonRef.current = lessonStream(conceptId, active, false, {
       onToken: (t) => {
@@ -140,9 +147,19 @@ const LessonScreen = () => {
         };
         setTexts(textsRef.current);
       },
-      onDone: () => setStreaming(false),
+      onReasoning: (t) => {
+        thinkRef.current += t;
+        setThink(thinkRef.current);
+      },
+      onDone: () => {
+        setStreaming(false);
+        thinkRef.current = "";
+        setThink("");
+      },
       onError: (_status, msg) => {
         setStreaming(false);
+        thinkRef.current = "";
+        setThink("");
         setErr(msg ?? "讲解生成失败");
         // 残缺文本丢弃，重进该子点时可重流
         const rest = { ...textsRef.current };
@@ -266,6 +283,7 @@ const LessonScreen = () => {
       subPoints={subPoints}
       activeIndex={activeIndex}
       statusText={statusText}
+      thinking={streaming ? think : ""}
       bodyText={bodyText}
       flowNodes={flow}
       messages={msgs}

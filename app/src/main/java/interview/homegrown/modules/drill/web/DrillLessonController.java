@@ -209,11 +209,11 @@ public class DrillLessonController {
             } else {
                 List<LessonGenerator.SiblingLesson> siblings =
                         lessonGenerator.siblingSummaries(conceptLessonRepo.findByConceptId(conceptId), sub);
-                // 讲解正文不把 reasoning 帧推给前端：关思考参数对部分 provider（小米 MiMo 等）
-                // 无效，模型仍会短暂思考；按 f451c6b 的设计讲解只呈现正文、思考不上屏。
-                // （思考超30s的保护在 LlmRawClient 内独立计时，不依赖这里传不传回调）
+                // reasoning 帧流式下发：讲解生成期间前端展示思考面板。关思考参数对部分
+                // provider（小米 MiMo）无效、模型仍会思考——与其隐性阻塞不如如实流式展示；
+                // 思考超30s无正文的降级保护在 LlmRawClient 内独立计时兜底。
                 String full = lessonGenerator.streamLesson(concept, sub, context, previousText, siblings,
-                        sink::token, null);
+                        sink::token, sink::reasoning);
 
                 if (full != null && !full.isBlank() && !sink.isBroken()) {
                     try {
