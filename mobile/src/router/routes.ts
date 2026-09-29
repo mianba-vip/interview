@@ -11,6 +11,7 @@ import MeScreen from "@/screens/MeScreen";
 import SettingsScreen from "@/screens/SettingsScreen";
 import DirectionsScreen from "@/screens/DirectionsScreen";
 import AiSettingsScreen from "@/screens/AiSettingsScreen";
+import SkillProfileScreen from "@/screens/SkillProfileScreen";
 
 export const routes = [
   {
@@ -82,6 +83,11 @@ export const routes = [
     path: "/settings/ai",
     component: AiSettingsScreen,
     guid: "custom:ai-settings",
+  },
+  {
+    path: "/skills",
+    component: SkillProfileScreen,
+    guid: "custom:skills",
   },
 ];
 
