@@ -6,12 +6,13 @@ import {
   CheckCircle2, XCircle, Send, Volume2, Square, Loader2, Timer, Pause, Play,
 } from 'lucide-react';
 import { interviewApi, resumeApi, type InterviewSession, type CurrentQuestion, type InterviewMode } from '../api/interview';
-import { studyPlan } from '../api/drill';
+import { useAuth } from '../auth/AuthContext';
 import { Button, Card, Badge } from '../components/ui';
 import { Markdown } from '../components/Markdown';
 import { InterviewScoringBreakdown } from '../components/InterviewScoringBreakdown';
 import { ApiError } from '../api/client';
 import type { PlanView } from '../api/types';
+import { rememberResumeDetail, useDashboardData } from '../lib/useDashboardData';
 import './Interview.css';
 
 function msg(e: unknown): string {
@@ -76,9 +77,14 @@ function fmtTime(sec: number): string {
 
 /** 进行中面试会话持久化 */
 const SESSION_KEY = 'yan.interview.sessionId';
+const INTERVIEW_OPTIONS = ['plans', 'resumes'] as const;
 
 export function Interview() {
   const navigate = useNavigate();
+  const { userId } = useAuth();
+  const { data } = useDashboardData(userId, INTERVIEW_OPTIONS);
+  const plans = data.plans ?? [];
+  const resumes = data.resumes ?? [];
   const [searchParams] = useSearchParams();
   const initialCorpus = Number(searchParams.get('corpus'));
   const [corpusId, setCorpusId] = useState<number | null>(Number.isSafeInteger(initialCorpus) && initialCorpus > 0 ? initialCorpus : null);
@@ -86,8 +92,6 @@ export function Interview() {
 
   // —— 配置态 ——
   const [mode, setMode] = useState<InterviewMode>('TEXT');
-  const [plans, setPlans] = useState<PlanView[]>([]);
-  const [resumes, setResumes] = useState<Awaited<ReturnType<typeof resumeApi.list>>>([]);
   const [resumeId, setResumeId] = useState<number | null>(null);
   const [planIds, setPlanIds] = useState<number[]>([]);
   const [difficulty, setDifficulty] = useState<'JUNIOR' | 'MIDDLE' | 'SENIOR'>('JUNIOR');
@@ -108,11 +112,6 @@ export function Interview() {
   const [left, setLeft] = useState(0);
   const recRef = useRef<any>(null);
   const [err, setErr] = useState('');
-
-  useEffect(() => {
-    studyPlan.list().then(setPlans).catch(() => {});
-    resumeApi.list().then(setResumes).catch(() => {});
-  }, []);
 
   // 倒计时
   useEffect(() => {
@@ -158,9 +157,8 @@ export function Interview() {
     setConfigErr('');
     try {
       const r = await resumeApi.upload(file);
-      const list = await resumeApi.list();
-      setResumes(list);
-      setResumeId(r.id ?? list[list.length - 1]?.id ?? null);
+      rememberResumeDetail(userId, r);
+      setResumeId(r.id);
     } catch (e) {
       setConfigErr(msg(e));
     } finally {

@@ -6,7 +6,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { keymap, EditorView } from '@codemirror/view';
 import { drill, aiSettings, chatStream, lessonChatStream, lessonStream, studyPlan, type TutorStream } from '../api/drill';
-import { Button } from '../components/ui';
+import { Button, Tag } from '../components/ui';
 import { NoteDialog } from '../components/NoteDialog';
 import { ApiError } from '../api/client';
 import type { QuestionView, QuestionMeta, GradeView, PlanView, ConversationView, LessonQaMessageView } from '../api/types';
@@ -18,6 +18,7 @@ import { ConfirmDialog, PromptDialog } from './DrillDialogs';
 import { convToMessages, runTurnsToMessages } from '../lib/drillConversation';
 import { compressImage, MAX_IMAGES } from '../lib/drillImage';
 import { Plans } from './Plans';
+import { getCachedStudyPlans } from '../lib/useDashboardData';
 import './Drill.css';
 
 // —— 一次练习会话的上下文：决定「下一题」去哪抽 ——
@@ -251,7 +252,7 @@ export function Drill() {
   // —— 加载学习方向列表 ——
   const loadPlans = useCallback(async () => {
     try {
-      setPlans(await studyPlan.list());
+      setPlans(await getCachedStudyPlans());
     } catch (e) {
       setPlanErr(e instanceof ApiError ? e.message : '加载失败');
     }

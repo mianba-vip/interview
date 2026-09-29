@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, BookOpen, Target, PenLine, Trash2, Eye, EyeOff, Layers, FileText, RefreshCw, Check, MessageCircle } from 'lucide-react';
-import { drill, studyPlan } from '../api/drill';
+import { drill } from '../api/drill';
 import { Card, Button, Badge, Loading } from '../components/ui';
 import { Markdown } from '../components/Markdown';
 import { CardMeta, daysUntilDue } from '../components/CardMeta';
 import { useActivePlan } from '../lib/useActivePlan';
+import { getCachedStudyPlans } from '../lib/useDashboardData';
 import { ApiError } from '../api/client';
 import type {DebtView, KnowledgeCard, PlanView, CasualNote} from '../api/types';
 import './Notes.css';
@@ -114,7 +115,7 @@ export function Notes() {
 
   useEffect(() => {
     let alive = true;
-    Promise.all([drill.debt(), studyPlan.list()])
+    Promise.all([drill.debt(), getCachedStudyPlans()])
       .then(([d, p]) => {
         if (alive) {
           setDebt(d);

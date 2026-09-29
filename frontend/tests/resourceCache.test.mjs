@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ResourceCache } from '../src/lib/resourceCache.ts';
+import { KeyedResourceCache, ResourceCache } from '../src/lib/resourceCache.ts';
 
 const deferred = () => {
   let resolve;
@@ -39,7 +39,33 @@ test('首页/侧栏/StrictMode 并发请求只读取一次，返回首页复用�
   assert.equal(calls, 1);
   assert.equal(cache.getSnapshot(), snapshot);
   assert.deepEqual(snapshot.data.today, [1, 2]);
+  assert.deepEqual(await cache.getValue('today'), [1, 2]);
+  assert.equal(calls, 1);
   stopHome();
+});
+
+test('命令式计划读取失败时不把空列表当成功，缓存存在时可继续展示旧值', async () => {
+  let now = 1000;
+  let reject = true;
+  const cache = new ResourceCache({ plans: () => reject ? Promise.reject(new Error('offline')) : Promise.resolve([1]) }, 60_000, () => now);
+  await assert.rejects(cache.getValue('plans'), /加载失败/);
+  reject = false;
+  assert.deepEqual(await cache.getValue('plans'), [1]);
+  now += 60_001;
+  reject = true;
+  assert.deepEqual(await cache.getValue('plans'), [1]);
+});
+
+test('命令式页面读取途中写入计划时等待新版本，不返回过时计划', async () => {
+  const old = deferred();
+  let calls = 0;
+  const cache = new ResourceCache({ plans: () => (++calls === 1 ? old.promise : Promise.resolve(['new'])) });
+  const reading = cache.getValue('plans');
+  await flush();
+  cache.invalidate(['plans']);
+  old.resolve(['old']);
+  assert.deepEqual(await reading, ['new']);
+  assert.equal(calls, 2);
 });
 
 test('快接口独立显示，不等待最慢的接口', async () => {
@@ -133,4 +159,44 @@ test('退出立即清除内存数据，旧账号迟到响应不会回填缓存',
   assert.equal(cache.getSnapshot().loading, false);
   await cache.refresh(undefined, true);
   assert.equal(cache.getSnapshot().data.cards, null);
+});
+
+test('简历详情按 ID 缓存 60 秒，同一份并发查看只请求一次', async () => {
+  let now = 1000;
+  const calls = [];
+  const response = deferred();
+  const cache = new KeyedResourceCache((id) => {
+    calls.push(id);
+    return id === 1 ? response.promise : Promise.resolve({ id });
+  }, 60_000, () => now);
+
+  const first = cache.get(1);
+  const second = cache.get(1);
+  await flush();
+  assert.deepEqual(calls, [1]);
+  response.resolve({ id: 1 });
+  assert.deepEqual(await first, { id: 1 });
+  assert.deepEqual(await second, { id: 1 });
+  assert.deepEqual(await cache.get(1), { id: 1 });
+  assert.deepEqual(calls, [1]);
+
+  assert.deepEqual(await cache.get(2), { id: 2 });
+  assert.deepEqual(calls, [1, 2]);
+  now += 60_001;
+  assert.deepEqual(await cache.get(2), { id: 2 });
+  assert.deepEqual(calls, [1, 2, 2]);
+});
+
+test('简历写入和退出清除详情缓存，旧请求不能回填', async () => {
+  const old = deferred();
+  let calls = 0;
+  const cache = new KeyedResourceCache(() => (++calls === 1 ? old.promise : Promise.resolve({ id: 1, version: 2 })));
+  const pending = cache.get(1);
+  await flush();
+  cache.clear();
+  cache.set(1, { id: 1, version: 2 });
+  old.resolve({ id: 1, version: 1 });
+  await pending;
+  assert.deepEqual(await cache.get(1), { id: 1, version: 2 });
+  assert.equal(calls, 1);
 });

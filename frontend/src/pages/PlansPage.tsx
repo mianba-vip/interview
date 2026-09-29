@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
@@ -15,9 +15,11 @@ import {
 } from 'lucide-react';
 import { studyPlan } from '../api/drill';
 import { ApiError } from '../api/client';
+import { useAuth } from '../auth/AuthContext';
 import { Button, Card, Loading } from '../components/ui';
 import { ACTIVE_PLAN_KEY, readActivePlanId } from '../lib/useActivePlan';
-import type { PlanView, PlanConceptView } from '../api/types';
+import { PLANS_ONLY, useDashboardData } from '../lib/useDashboardData';
+import type { PlanConceptView } from '../api/types';
 import './PlansPage.css';
 
 function msg(e: unknown): string {
@@ -44,9 +46,11 @@ const LAYER_LABEL: Record<number, string> = {
 export function PlansPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [plans, setPlans] = useState<PlanView[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState('');
+  const { userId } = useAuth();
+  const { data, failed, refresh } = useDashboardData(userId, PLANS_ONLY);
+  const plans = data.plans ?? [];
+  const loadFailed = failed.includes('plans');
+  const loading = data.plans === null && !loadFailed;
 
   // —— 方向 tab 与编辑态由 URL 查询参数驱动（?plan=&edit=1），支持浏览器前进/后退 ——
   // 无 ?plan= 时默认跟随全局「当前学习方向」（首页/他页选择记忆），而不是固定第一个
@@ -76,27 +80,8 @@ export function PlansPage() {
   const [aiInstr, setAiInstr] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setPlans(await studyPlan.list());
-    } catch (e) {
-      setErr(msg(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // 编辑后的静默刷新（不闪 loading）
-  const reload = useCallback(async () => {
-    try {
-      setPlans(await studyPlan.list());
-    } catch (e) {
-      setErr(msg(e));
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+  // 写入会自动使首页与本页的同一份计划缓存失效；这里等待去重后的刷新即可。
+  const reload = useCallback(() => refresh(), [refresh]);
 
   const activePlan = plans[activeIdx] ?? null;
   const currentConceptId = activePlan?.concepts
@@ -136,7 +121,7 @@ export function PlansPage() {
       await studyPlan.remove(activePlan.id);
       const idx = Math.max(0, Math.min(activeIdx, plans.length - 2));
       setSearchParams({ plan: String(idx) });
-      await load();
+      await reload();
     } catch (e) {
       setEditErr(msg(e));
     } finally {
@@ -168,10 +153,15 @@ export function PlansPage() {
         <p>这里是你的知识蓝图。点「编辑」可以自行调整方向，或增改删知识点。</p>
       </header>
 
-      {err && <div className="banner info">{err}</div>}
+      {loadFailed && <div className="banner info">学习计划刷新失败，当前展示的内容可能不是最新的。</div>}
 
       {loading ? (
         <Loading label="读取学习计划…" />
+      ) : data.plans === null ? (
+        <div className="empty">
+          <h3>暂时无法读取学习计划</h3>
+          <Button onClick={() => void reload()}>重新加载</Button>
+        </div>
       ) : plans.length === 0 ? (
         <div className="empty">
           <h3>还没有学习方向</h3>
