@@ -61,6 +61,13 @@ export function Drill() {
   const qaFollowRef = useRef(true);
   // 本轮是否真实作答过（reveal「看答案」不算作答）：看答案后据此区分「结束并评分」与「放弃下一题」。
   const hasAnsweredRef = useRef(false);
+  // 恢复历史对话后回填「已作答」：换端继续（手机答过、web/桌面打开）时历史里已有真实作答，
+  // 不回填会让 canFinish 恒为 false——「结束并评分」永远不出现，题无法结束评分。
+  const markAnsweredFromHistory = (msgs: ChatMsg[]) => {
+    if (msgs.some((m) => m.role === 'me' && !!m.text && m.text !== '我想直接看答案')) {
+      hasAnsweredRef.current = true;
+    }
+  };
 
   // —— 视图状态机：home(选方向) / teach(先教后考) / learn(做题)。view 由路由派生（见上方）。
   const [plans, setPlans] = useState<PlanView[]>([]);
@@ -373,7 +380,9 @@ export function Drill() {
               probeType: c.probeType,
               responseFormat: c.responseFormat,
             });
-            setMessages(convToMessages(c));
+            const restoredMsgs = convToMessages(c);
+            setMessages(restoredMsgs);
+            markAnsweredFromHistory(restoredMsgs);
             setCtx(null);
             setInput('');
             setErr('');
@@ -444,6 +453,7 @@ export function Drill() {
         .then((conv) => {
           const hist = runTurnsToMessages(conv, q.runId);
           if (hist.length > 0) {
+            markAnsweredFromHistory(hist);
             setMessages((prev) => [prev[0], ...hist, ...prev.slice(1)]);
           }
         })
@@ -1208,7 +1218,9 @@ export function Drill() {
       probeType: conv.probeType,
       responseFormat: conv.responseFormat,
     });
-    setMessages(convToMessages(conv));
+    const restoredMsgs = convToMessages(conv);
+    setMessages(restoredMsgs);
+    markAnsweredFromHistory(restoredMsgs);
     setCtx(null);
     setInput('');
     setErr('');
