@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Frame2579 from "@/views/Frame2579";
-import { conversation, history, historyPage } from "@/api/drill";
+import { conversation, debtList, history, historyPage, type DebtItem } from "@/api/drill";
 import type { ChatMsg, ConversationView, RunSummaryView } from "@/api/types";
 
 const PAGE = 20;
@@ -33,6 +33,8 @@ const PracticeScreen = () => {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState(""); // 历史模糊搜索关键词
+  const [tab, setTab] = useState<"ongoing" | "debt" | "history">("history");
+  const [debt, setDebt] = useState<DebtItem[]>([]);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const offsetRef = useRef(0);
   const hasMoreRef = useRef(true);
@@ -59,6 +61,7 @@ const PracticeScreen = () => {
     const init = async () => {
       await Promise.all([
         history().then(setAll).catch((e) => setErr(e instanceof Error ? e.message : "加载失败")),
+        debtList().then(setDebt).catch(() => setDebt([])),
         loadMore(),
       ]);
       setReady(true);
@@ -181,6 +184,16 @@ const PracticeScreen = () => {
       <Frame2579
         weekCount={weekCountOf(all)}
         total={gradedShown.length}
+        tab={tab}
+        onTabChange={setTab}
+        debt={debt.map((d) => ({
+          runId: d.runId,
+          stem: d.stem,
+          score: d.rawScore,
+          answeredAt: d.answeredAt,
+          weakPoints: d.weakPoints,
+        }))}
+        onDebtClick={(runId) => navigate(`/review/${runId}`)}
         searchText={q}
         onSearchText={setQ}
         ongoing={ongoing.map((r) => ({

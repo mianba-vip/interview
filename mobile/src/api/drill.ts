@@ -141,6 +141,22 @@ export function debtCount(): Promise<number> {
   return apiFetch<unknown[]>('/drill/debt').then((d) => (Array.isArray(d) ? d.length : 0));
 }
 
+/** 未闭环作答明细（练习页「未闭环作答」页签）：答错且未写内化笔记的题。 */
+export interface DebtItem {
+  runId: number;
+  stem: string;
+  rawScore: number;
+  answeredAt: string;
+  weakPoints: string[];
+  conceptId: number | null;
+  planId: number | null;
+}
+
+/** 未闭环作答清单（与 debtCount 同一端点，取完整明细）。 */
+export function debtList(): Promise<DebtItem[]> {
+  return apiFetch<DebtItem[]>('/drill/debt');
+}
+
 /** 把一次练习沉淀为知识卡（复盘页「沉淀为知识卡」）。 */
 export function sedimentToCard(runId: number): Promise<unknown> {
   return apiFetch<unknown>(`/drill/${runId}/card`, { method: 'POST' });

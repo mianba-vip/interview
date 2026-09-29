@@ -55,15 +55,30 @@ export interface PracticeHistoryItem {
     grade: string;
 }
 
+/** 未闭环作答（答错且未写内化笔记），点击进复盘闭环。 */
+export interface PracticeDebtItem {
+    runId: number;
+    stem: string;
+    score: number;
+    answeredAt: string;
+    weakPoints: string[];
+}
+
+export type PracticeTab = "ongoing" | "debt" | "history";
+
 export interface Frame2579Props {
     weekCount: number;
     total: number;
+    tab: PracticeTab;
+    onTabChange: (t: PracticeTab) => void;
     ongoing: PracticeOngoingItem[];
+    debt: PracticeDebtItem[];
     history: PracticeHistoryItem[];
     /** 历史模糊搜索：受控关键词（容器已过滤好 history 传入） */
     searchText: string;
     onSearchText: (v: string) => void;
     onOngoingClick?: (runId: number) => void;
+    onDebtClick?: (runId: number) => void;
     onHistoryClick?: (runId: number) => void;
     sentinelRef: Ref<HTMLDivElement>;
 }
@@ -71,11 +86,15 @@ export interface Frame2579Props {
 const Frame2579 = ({
     weekCount,
     total,
+    tab,
+    onTabChange,
     ongoing,
+    debt,
     history,
     searchText,
     onSearchText,
     onOngoingClick,
+    onDebtClick,
     onHistoryClick,
     sentinelRef,
 }: Frame2579Props) => {
@@ -204,7 +223,73 @@ const Frame2579 = ({
                                 </div>
                             </div>
                         </div>
-                        {ongoing.map((o) => (
+                        {/* 页签：未完成对话 / 未闭环作答 / 历史练习 */}
+                        <div
+                            style={{
+                                width: "100%",
+                                display: "flex",
+                                gap: 8,
+                                padding: "2px 0 12px",
+                            }}
+                        >
+                            {(
+                                [
+                                    ["ongoing", "未完成对话"],
+                                    ["debt", "未闭环作答"],
+                                    ["history", "历史练习"],
+                                ] as const
+                            ).map(([key, label]) => (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => onTabChange(key)}
+                                    style={{
+                                        border: "none",
+                                        cursor: "pointer",
+                                        padding: "6px 14px",
+                                        borderRadius: 999,
+                                        fontSize: 13,
+                                        fontFamily:
+                                            tab === key ? '"Noto Sans SC-Bold"' : '"Noto Sans SC-Regular"',
+                                        color: tab === key ? "#fff" : "var(--color-text-secondary)",
+                                        background:
+                                            tab === key
+                                                ? "var(--color-brand-purple)"
+                                                : "var(--color-bg-input)",
+                                    }}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                            <p
+                                id="2_630"
+                                className="Pixso-paragraph-2_630 pixso-relative-auto-size pixso-flex-shrink-0"
+                                style={{ marginLeft: "auto", fontSize: 13, color: "var(--color-text-secondary)" }}
+                            >
+                                {tab === "history"
+                                    ? searchText.trim()
+                                        ? `匹配 ${total} 条`
+                                        : `全部 ${total} 次`
+                                    : tab === "debt"
+                                      ? `${debt.length} 条待闭环`
+                                      : `${ongoing.length} 个进行中`}
+                            </p>
+                        </div>
+                        {tab === "ongoing" &&
+                        (ongoing.length === 0 ? (
+                            <p
+                                style={{
+                                    width: "100%",
+                                    textAlign: "center",
+                                    fontSize: 13,
+                                    color: "var(--color-text-secondary)",
+                                    padding: "10px 0",
+                                }}
+                            >
+                                {"没有进行中的对话，去开一道新题吧"}
+                            </p>
+                        ) : (
+                        ongoing.map((o) => (
                         <div
                             key={o.runId}
                             onClick={() => onOngoingClick?.(o.runId)}
@@ -277,27 +362,80 @@ const Frame2579 = ({
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                        ))}
-                        <div
-                            id="2_628"
-                            className="Pixso-frame-2_628 pixso-relative-no-shrink pixso-flex-auto-height"
-                        >
-                            <div className="frame-content-2_628 pixso-relative-flex">
-                                <p
-                                    id="2_629"
-                                    className="Pixso-paragraph-2_629 pixso-relative-auto-size pixso-flex-shrink-0"
-                                >
-                                    {"历史练习"}
-                                </p>
-                                <p
-                                    id="2_630"
-                                    className="Pixso-paragraph-2_630 pixso-relative-auto-size pixso-flex-shrink-0"
-                                >
-                                    {searchText.trim() ? `匹配 ${total} 条` : `全部 ${total} 次`}
-                                </p>
                             </div>
-                        </div>
+                        ))))}
+                        {tab === "debt" &&
+                        (debt.length === 0 ? (
+                            <p
+                                style={{
+                                    width: "100%",
+                                    textAlign: "center",
+                                    fontSize: 13,
+                                    color: "var(--color-text-secondary)",
+                                    padding: "10px 0",
+                                }}
+                            >
+                                {"没有待闭环的作答，继续保持！"}
+                            </p>
+                        ) : (
+                            debt.map((d) => (
+                                <div
+                                    key={d.runId}
+                                    onClick={() => onDebtClick?.(d.runId)}
+                                    style={{ cursor: "pointer" }}
+                                    className="Pixso-frame-2_631 effect-effectcardshadow-2_19 pixso-relative-no-shrink pixso-flex-auto-height"
+                                >
+                                    <div className="frame-content-2_631 pixso-relative-flex">
+                                        <div
+                                            className="Pixso-frame-2_632 pixso-relative-flex pixso-h-auto"
+                                            style={{ width: "100%" }}
+                                        >
+                                            <p
+                                                className="Pixso-paragraph-2_633 pixso-relative-no-shrink pixso-h-auto"
+                                                style={{ fontSize: 14 }}
+                                            >
+                                                {shortTitle(d.stem)}
+                                            </p>
+                                            <p
+                                                className="Pixso-paragraph-2_635 pixso-relative-auto-size pixso-flex-shrink-0"
+                                                style={{
+                                                    color:
+                                                        d.score < 60
+                                                            ? "var(--color-brand-coral)"
+                                                            : "var(--color-brand-mint)",
+                                                    fontWeight: 700,
+                                                }}
+                                            >
+                                                {`${Math.round(d.score)} 分`}
+                                            </p>
+                                        </div>
+                                        {d.weakPoints.length > 0 && (
+                                            <p
+                                                style={{
+                                                    width: "100%",
+                                                    fontSize: 12,
+                                                    color: "var(--color-brand-coral)",
+                                                    margin: 0,
+                                                }}
+                                            >
+                                                {`薄弱点：${d.weakPoints.slice(0, 3).join(" · ")}`}
+                                            </p>
+                                        )}
+                                        <p
+                                            style={{
+                                                width: "100%",
+                                                fontSize: 12,
+                                                color: "var(--color-text-secondary)",
+                                                margin: 0,
+                                            }}
+                                        >
+                                            点击进入复盘，写内化笔记完成闭环
+                                        </p>
+                                    </div>
+                                </div>
+                            ))
+                        ))}
+                        {tab === "history" && (<>
                         <div
                             style={{
                                 width: "100%",
@@ -420,6 +558,8 @@ const Frame2579 = ({
                         </div>
                         ))}
                         <div ref={sentinelRef} />
+                        </>
+                        )}
                     </div>
                 </div>
                 <div
