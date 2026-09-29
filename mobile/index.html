@@ -8,6 +8,22 @@
     />
     <meta name="theme-color" content="#FAF7F2" />
     <title>面霸 · AI 学习</title>
+    <!-- 开屏图：内联关键样式，HTML 解析即绘制奶油底品牌开屏，不等任何 CSS/JS 资源 -->
+    <style>
+      html, body { margin: 0; background: #FAF7F2; }
+      #mbsplash {
+        position: fixed; inset: 0; z-index: 2147483647;
+        background: #FAF7F2;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        font-family: "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+        transition: opacity 0.28s ease;
+      }
+      #mbsplash .mb-mark { width: 96px; height: 96px; border-radius: 22px; display: block; }
+      #mbsplash .mb-name { margin-top: 26px; font-size: 40px; font-weight: 700; color: #2D2A26; letter-spacing: 10px; text-indent: 10px; line-height: 1; }
+      #mbsplash .mb-bar { width: 58px; height: 6px; border-radius: 3px; background: #6C5CE7; margin-top: 20px; }
+      #mbsplash .mb-sub { margin-top: 16px; font-size: 13px; color: #6B675F; letter-spacing: 2px; }
+      #mbsplash.mb-hide { opacity: 0; pointer-events: none; }
+    </style>
     <!-- 开发期错误缓冲：崩溃先于任何模块执行时也能把错误留住（写进 sessionStorage，刷新后可读） -->
     <script>
       window.__preerrs = [];
@@ -36,6 +52,12 @@
     </script>
   </head>
   <body>
+    <div id="mbsplash" aria-hidden="true">
+      <img class="mb-mark" src="/src/assets/images/9fd906c2d28a624d7c02c25d912ab5f5b0da5b39.png" alt="" />
+      <div class="mb-name">面霸</div>
+      <div class="mb-bar"></div>
+      <div class="mb-sub">AI 导师陪你练过每一道面试题</div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
