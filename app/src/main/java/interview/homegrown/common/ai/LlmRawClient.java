@@ -252,6 +252,13 @@ public class LlmRawClient {
                 }
                 boolean thinkingTimeout = readStreamLoop(response, onToken, onError, fallbackToReasoning, onReasoning);
                 if (!thinkingTimeout) return;
+                if (!thinking) {
+                    // 已是非思考模式仍超时：重发完全相同的请求毫无意义（且对不认识
+                    // 关思考参数的 provider 如小米 MiMo，开→关两次请求也完全相同），
+                    // 直接结束，调用方按失败兜底，避免双倍等待
+                    log.info("非思考模式思考超过 {}s，放弃重试", MAX_THINKING_SECONDS);
+                    return;
+                }
                 log.info("思考超过 {}s，降级为非思考模式重试", MAX_THINKING_SECONDS);
                 thinking = false;
             } catch (Exception t) {
@@ -315,9 +322,11 @@ public class LlmRawClient {
                     String reasoning = firstReasoningToken(delta);
                     if (reasoning == null) reasoning = firstReasoningToken(choice);
                     if (reasoning == null) reasoning = firstReasoningToken(choice.path("message"));
-                    if (reasoning != null && !reasoning.isEmpty() && onReasoning != null) {
+                    if (reasoning != null && !reasoning.isEmpty()) {
+                        // 思考计时必须独立于 onReasoning 是否为空：否则调用方不关心思考内容时
+                        // （传 null）30s 保护一并失效，思考会无上限地阻塞正文下发
                         if (firstTokenAt < 0) firstTokenAt = System.currentTimeMillis();
-                        onReasoning.accept(reasoning);
+                        if (onReasoning != null) onReasoning.accept(reasoning);
                     }
                     String text = streamText(delta.path("content"));
                     if (text == null && fallbackToReasoning) text = reasoning;
