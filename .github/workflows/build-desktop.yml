@@ -41,6 +41,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 前端 SPA 已拆分到独立仓库 mianba-vip/mianba-web（公开），
+      # 按桌面构建脚本的约定路径检出到 frontend/ 供打包引用
+      - name: Checkout web SPA (mianba-web)
+        uses: actions/checkout@v4
+        with:
+          repository: mianba-vip/mianba-web
+          ref: main
+          path: frontend
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:

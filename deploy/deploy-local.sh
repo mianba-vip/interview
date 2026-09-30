@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# 本地一键部署：构建后端 jar + Web SPA → 上传服务器 → 重启服务 → 健康检查
+# 本地一键部署：构建后端 jar（SPA 由独立仓库 mianba-web 部署）→ 上传服务器 → 重启服务 → 健康检查
 #
 # 背景：服务器机房（陕西电信云基地/XIAOTEYUN）限制境外入站，GitHub Actions
 #       直连部署不可用；本机（国内 IP）SSH 可达，故用本脚本完成部署。
@@ -103,28 +103,21 @@ bash "$ROOT/deploy/build-backend.sh"
 [ -f "$JAR" ] || { echo "❌ jar 构建失败：$JAR 不存在"; exit 1; }
 echo "   ✓ jar: $(ls -la "$JAR" | awk '{print $5}') bytes"
 
-# ---------- 2/5 构建 Web（官网落地页 + /app SPA）----------
-step "2/5 构建 Web（官方站点 + SPA 打包至 /app）"
-npm --prefix frontend run build:web >/dev/null 2>&1 || { echo "❌ web 构建失败"; exit 1; }
-[ -f frontend/dist/index.html ] || { echo "❌ web 构建产物缺失"; exit 1; }
+# ---------- 2/5 同步官网静态资源（/app SPA 由独立仓库 mianba-web 部署）----------
+step "2/5 同步官网静态资源（/app SPA 由 mianba-web 仓库独立部署）"
 
-# 有官网源码时组装完整 nginx 根目录；没有时仅更新服务器 /app，
-# 保留服务器当前的官网根目录，避免本地缺文件导致发布中断或误删官网。
+# 官网静态资源解包覆盖到 web 根（保留服务器上的 /app 与 /download，
+# 这两处分别由 mianba-web 与 mianba-mobile 仓库的部署脚本维护）。
 WEB_STAGE="$ROOT/deploy/web-build/web"
 rm -rf "$WEB_STAGE" && mkdir -p "$WEB_STAGE"
 if [ -f "$ROOT/official-site/index.html" ]; then
   cp -R "$ROOT/official-site/." "$WEB_STAGE/"
-  mkdir -p "$WEB_STAGE/app"
-  cp -R "$ROOT/frontend/dist/." "$WEB_STAGE/app/"
-  [ -f "$WEB_STAGE/app/index.html" ] || { echo "❌ SPA 产物缺失"; exit 1; }
   chmod -R a+rX "$WEB_STAGE"
   WEB_UPLOAD_SOURCE="$WEB_STAGE"
-  WEB_UPLOAD_TARGET="$DEPLOY_DIR/web-image/web"
-  echo "   ✓ web: official-site (/) + SPA (/app)"
+  echo "   ✓ web: official-site 静态资源（/app 由 mianba-web 仓库维护）"
 else
-  WEB_UPLOAD_SOURCE="$ROOT/frontend/dist"
-  WEB_UPLOAD_TARGET="$DEPLOY_DIR/web-image/web/app"
-  echo "   ⚠ official-site/index.html 不存在：本次仅更新 /app，保留服务器现有官网"
+  WEB_UPLOAD_SOURCE=""
+  echo "   ⚠ official-site/index.html 不存在：本次跳过官网静态资源"
 fi
 
 # ---------- 3/5 上传产物 ----------
@@ -136,8 +129,10 @@ step "3/5 上传产物到服务器"
      mv -f '$DEPLOY_DIR/backend/app.jar' '$DEPLOY_DIR/backend/app.jar.previous'; fi; \
    mv -f '$DEPLOY_DIR/backend/app.jar.uploading' '$DEPLOY_DIR/backend/app.jar'"
 echo "   ✓ backend/app.jar"
-upload_tree "$WEB_UPLOAD_SOURCE" "$WEB_UPLOAD_TARGET"
-echo "   ✓ $WEB_UPLOAD_TARGET"
+if [ -n "${WEB_UPLOAD_SOURCE:-}" ]; then
+  tar -C "$WEB_UPLOAD_SOURCE" -czf - . |     "${SSH[@]}" "$REMOTE" "tar -xzf - -C '$DEPLOY_DIR/web-image/web'"
+  echo "   ✓ 官网静态资源已同步（/app 与 /download 由各自仓库部署脚本维护）"
+fi
 "${SCP[@]}" deploy/nginx.conf "$REMOTE:$DEPLOY_DIR/web-image/nginx.conf.uploading"
 "${SSH[@]}" "$REMOTE" \
   "mv -f '$DEPLOY_DIR/web-image/nginx.conf.uploading' '$DEPLOY_DIR/web-image/nginx.conf'"
