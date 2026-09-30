@@ -41,14 +41,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 前端 SPA 已拆分到独立仓库 mianba-vip/mianba-web（公开），
-      # 按桌面构建脚本的约定路径检出到 frontend/ 供打包引用
-      - name: Checkout web SPA (mianba-web)
-        uses: actions/checkout@v4
-        with:
-          repository: mianba-vip/mianba-web
-          ref: main
-          path: frontend
+      # 前端 SPA 已拆分到独立仓库 mianba-vip/mianba-web（公开）：
+      # 匿名克隆到 frontend/ 路径，供桌面打包脚本引用（无需任何凭据）
+      - name: Clone web SPA (mianba-web)
+        shell: bash
+        run: git clone --depth 1 -b main https://github.com/mianba-vip/mianba-web.git frontend
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
