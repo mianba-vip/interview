@@ -231,7 +231,9 @@ public class DrillLessonController {
                         log.debug("lesson cache write failed (ignored): {}", e.getMessage());
                     }
                 } else if (full == null || full.isBlank()) {
-                    sink.token("(lesson generation failed, you can start practicing first)");
+                    // 生成失败走 error 帧：前端清掉半截内容并提示可重试
+                    //（此前是英文 token 文案，还会被客户端缓存在 texts 里无法重试）
+                    sink.event("error", "{\"message\":\"讲解生成失败，请稍后重试；也可以先开始练习\"}");
                 }
             }
             sink.done();

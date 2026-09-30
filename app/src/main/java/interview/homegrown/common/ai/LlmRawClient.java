@@ -250,16 +250,16 @@ public class LlmRawClient {
                             "LLM stream HTTP " + response.statusCode()));
                     return;
                 }
-                boolean thinkingTimeout = readStreamLoop(response, onToken, onError, fallbackToReasoning, onReasoning);
+                long waitMs = thinking ? THINK_RETRY_MS : NO_THINK_MAX_WAIT_MS;
+                boolean thinkingTimeout = readStreamLoop(response, onToken, onError, fallbackToReasoning, onReasoning, waitMs);
                 if (!thinkingTimeout) return;
                 if (!thinking) {
-                    // 已是非思考模式仍超时：重发完全相同的请求毫无意义（且对不认识
-                    // 关思考参数的 provider 如小米 MiMo，开→关两次请求也完全相同），
-                    // 直接结束，调用方按失败兜底，避免双倍等待
-                    log.info("非思考模式思考超过 {}s，放弃重试", MAX_THINKING_SECONDS);
+                    // 非思考流等待仍超时（部分 provider 关不掉思考，如小米 MiMo）：
+                    // 重发完全相同的请求毫无意义——按失败结束，调用方给出可重试提示
+                    log.info("非思考模式 {}s 无正文，放弃本次生成", waitMs / 1000);
                     return;
                 }
-                log.info("思考超过 {}s，降级为非思考模式重试", MAX_THINKING_SECONDS);
+                log.info("思考超过 {}s，降级为非思考模式重试", waitMs / 1000);
                 thinking = false;
             } catch (Exception t) {
                 if (t instanceof InterruptedException) Thread.currentThread().interrupt();
@@ -298,10 +298,11 @@ public class LlmRawClient {
         return body;
     }
 
-    /** 读取 SSE 流并分发 token。返回 true 表示思考超时需要降级重试。 */
+    /** 读取 SSE 流并分发 token。返回 true 表示「无正文」超时（调用方决定降级或放弃）。 */
     private boolean readStreamLoop(HttpResponse<InputStream> response,
                                    Consumer<String> onToken, Consumer<Throwable> onError,
-                                   boolean fallbackToReasoning, Consumer<String> onReasoning) throws Exception {
+                                   boolean fallbackToReasoning, Consumer<String> onReasoning,
+                                   long noContentTimeoutMs) throws Exception {
         long firstTokenAt = -1;
         boolean hasContent = false;
         try (BufferedReader reader = new BufferedReader(
@@ -335,7 +336,7 @@ public class LlmRawClient {
                         if (onToken != null) onToken.accept(text);
                     }
                     if (!hasContent && firstTokenAt > 0
-                            && System.currentTimeMillis() - firstTokenAt > MAX_THINKING_SECONDS * 1000L) {
+                            && System.currentTimeMillis() - firstTokenAt > noContentTimeoutMs) {
                         return true;
                     }
                 } catch (JsonProcessingException e) {
@@ -408,8 +409,13 @@ public class LlmRawClient {
      *  用户可在「设置 → 思考强度」改为 medium/high/auto。 */
     private static final String STREAM_REASONING_EFFORT = "low";
 
-    /** 思考超时（秒）：流式讲解/问答时，若模型思考超过该时长仍未输出正文，降级为非思考模式重试。 */
-    private static final int MAX_THINKING_SECONDS = 30;
+    /** 思考中流（未降级）：30s 无正文 → 降级为非思考模式重试（对能关思考的 provider 有效）。 */
+    private static final long THINK_RETRY_MS = 30_000L;
+
+    /** 非思考流（讲解正文等）：部分 provider 关不掉思考（小米 MiMo 实测所有关思考参数
+     *  均被忽略），降级重试完全无效——给足等待让模型想完自然输出（思考过程已流式
+     *  展示给用户，并非无反馈空等），而不是 30s 就掐死报「生成失败」。 */
+    private static final long NO_THINK_MAX_WAIT_MS = 120_000L;
 
     private String modelLower() {
         return cfg().model() == null ? "" : cfg().model().toLowerCase();
