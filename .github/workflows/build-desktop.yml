@@ -45,7 +45,11 @@ jobs:
       # 匿名克隆到 frontend/ 路径，供桌面打包脚本引用（无需任何凭据）
       - name: Clone web SPA (mianba-web)
         shell: bash
-        run: git clone --depth 1 -b main https://github.com/mianba-vip/mianba-web.git frontend
+        run: |
+          # Checkout 步骤持久化的 GITHUB_TOKEN 认证头只对本仓库有效，
+          # 不清掉的话跨仓库克隆会被 403 拒绝
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git clone --depth 1 -b main https://github.com/mianba-vip/mianba-web.git frontend
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
