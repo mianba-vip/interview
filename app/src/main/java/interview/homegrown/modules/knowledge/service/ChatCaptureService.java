@@ -4,7 +4,7 @@ import interview.homegrown.common.ai.StructuredOutputInvoker;
 import interview.homegrown.common.exception.BusinessException;
 import interview.homegrown.common.exception.ErrorCode;
 import interview.homegrown.modules.drill.domain.Concept;
-import interview.homegrown.modules.drill.repository.ConceptRepository;
+import interview.homegrown.modules.drill.service.ConceptPoolService;
 import interview.homegrown.modules.knowledge.domain.KnowledgeCard;
 import interview.homegrown.modules.knowledge.repository.KnowledgeCardRepository;
 import org.springframework.stereotype.Service;
@@ -27,12 +27,12 @@ public class ChatCaptureService {
     private static final long FIRST_REVIEW_SECONDS = -30;
 
     private final KnowledgeCardRepository cardRepo;
-    private final ConceptRepository conceptRepo;
+    private final ConceptPoolService conceptPool;
     private final StructuredOutputInvoker invoker;
 
-    public ChatCaptureService(KnowledgeCardRepository cardRepo, ConceptRepository conceptRepo, StructuredOutputInvoker invoker) {
+    public ChatCaptureService(KnowledgeCardRepository cardRepo, ConceptPoolService conceptPool, StructuredOutputInvoker invoker) {
         this.cardRepo = cardRepo;
-        this.conceptRepo = conceptRepo;
+        this.conceptPool = conceptPool;
         this.invoker = invoker;
     }
 
@@ -47,9 +47,11 @@ public class ChatCaptureService {
     }
 
     //LLM 判断标签与哪个已有概念相关；都不相关返回 null。
-    private Long matchConcept(List<String> tags) {
+    //候选只取「全局种子 + 本人方向」的可见概念池：把别人的私有概念喂给 LLM 既泄漏
+    //名称/主题，还可能让卡片关联到本人看不到的概念（复习回写掌握度时造成跨用户污染）。
+    private Long matchConcept(Long userId, List<String> tags) {
 
-        List<Concept> concepts = conceptRepo.findAll();
+        List<Concept> concepts = conceptPool.visiblePool(userId);
         if (concepts.isEmpty()) return null;
         String candidates = concepts.stream()
                 .map(c -> c.getId() + ":" + c.getTopic() + "/" + c.getName())
@@ -94,7 +96,7 @@ public class ChatCaptureService {
         //尝试关联概念（不相关返回NULL,不影响画像）
         Long conceptId = (draft.tags() == null || draft.tags().isEmpty())
                 ? null
-                : matchConcept(draft.tags());
+                : matchConcept(userId, draft.tags());
 
         //落库
         KnowledgeCard card = new KnowledgeCard();
