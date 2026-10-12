@@ -44,7 +44,7 @@ class DailyPlanEnsureTodayTest {
 
     private DailyPlanService service() {
         return new DailyPlanService(taskRepo, planRepo, conceptRepo, masteryRepo,
-                qbRepo, null, null, null, null, null);
+                qbRepo, null, null, null, null, null, null);
     }
 
     private StudyPlan plan(long id) {
