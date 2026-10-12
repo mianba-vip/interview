@@ -1,5 +1,6 @@
 package interview.homegrown.modules.project.web;
 
+import interview.homegrown.common.web.LocalFsImportGuard;
 import interview.homegrown.modules.project.domain.ProjectImport;
 import interview.homegrown.modules.project.service.ProjectAnalysisService;
 import org.springframework.http.HttpStatus;
@@ -34,9 +35,11 @@ import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 public class ProjectController {
 
     private final ProjectAnalysisService analysisService;
+    private final LocalFsImportGuard localFsGuard;
 
-    public ProjectController(ProjectAnalysisService analysisService) {
+    public ProjectController(ProjectAnalysisService analysisService, LocalFsImportGuard localFsGuard) {
         this.analysisService = analysisService;
+        this.localFsGuard = localFsGuard;
     }
 
     /** 上传 zip 项目文件。 */
@@ -51,9 +54,10 @@ public class ProjectController {
         ));
     }
 
-    /** 桌面端：直接读本地路径（免上传）。 */
+    /** 桌面端：直接读本地路径（免上传）。远程请求一律 403（防服务器任意目录读取）。 */
     @PostMapping("/import-path")
     public ResponseEntity<Map<String, Object>> importPath(@RequestBody Map<String, String> body) {
+        localFsGuard.requireLocalCaller("本地路径导入项目");
         Long uid = currentUserId();
         String path = body.get("path");
         if (path == null || path.isBlank()) {

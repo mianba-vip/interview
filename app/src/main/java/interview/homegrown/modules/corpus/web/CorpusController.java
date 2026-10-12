@@ -1,5 +1,6 @@
 package interview.homegrown.modules.corpus.web;
 
+import interview.homegrown.common.web.LocalFsImportGuard;
 import interview.homegrown.modules.corpus.domain.Corpus;
 import interview.homegrown.modules.corpus.service.CorpusService;
 import interview.homegrown.modules.corpus.service.CorpusLibraryService;
@@ -29,10 +30,13 @@ public class CorpusController {
 
     private final CorpusService service;
     private final CorpusLibraryService library;
+    private final LocalFsImportGuard localFsGuard;
 
-    public CorpusController(CorpusService service, CorpusLibraryService library) {
+    public CorpusController(CorpusService service, CorpusLibraryService library,
+                            LocalFsImportGuard localFsGuard) {
         this.service = service;
         this.library = library;
+        this.localFsGuard = localFsGuard;
     }
 
     @PostMapping("/upload")
@@ -41,9 +45,10 @@ public class CorpusController {
         return toView(c);
     }
 
-    /** 桌面端免上传：直接读本地文件 / 文件夹（仅本地部署有意义）。 */
+    /** 桌面端免上传：直接读本地文件 / 文件夹（仅本地部署有意义）。远程请求一律 403。 */
     @PostMapping("/from-path")
     public CorpusView fromPath(@RequestBody FromPathRequest req) {
+        localFsGuard.requireLocalCaller("本地路径导入资料");
         Corpus c = service.fromPath(req.path(), currentUserId());
         return toView(c);
     }

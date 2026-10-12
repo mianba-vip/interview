@@ -58,6 +58,7 @@ public class CorpusService {
     private static final Set<String> SYSTEM_ROOTS = Set.of(
             "/System", "/usr", "/bin", "/sbin", "/etc",
             "/private/var", "/private/etc", "/Library", "/Applications",
+            "/proc", "/sys", "/dev", "/boot", "/run", "/root",
             "C:\\Windows", "C:\\Program Files", "C:\\ProgramData");
 
     /** 遍历时跳过的目录名（构建产物 / 版本控制 / 依赖），避免把大项目拖爆。 */

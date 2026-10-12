@@ -73,6 +73,18 @@ public class ProjectAnalysisService {
             ".mp3", ".mp4", ".avi", ".mov", ".wav",
             ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx");
 
+    /**
+     * 出于安全与性能，import-path 直接拒绝这些系统根目录（含其子孙），与
+     * {@code CorpusService#SYSTEM_ROOTS} 保持一致。import-path 面向桌面本地模式
+     * （后端跑在用户自己机器上），这是防止误扫系统盘的兜底；公网服务器侧由
+     * {@code LocalFsImportGuard} 的回环校验拦截。
+     */
+    private static final Set<String> SYSTEM_ROOTS = Set.of(
+            "/System", "/usr", "/bin", "/sbin", "/etc",
+            "/private/var", "/private/etc", "/Library", "/Applications",
+            "/proc", "/sys", "/dev", "/boot", "/run", "/root",
+            "C:\\Windows", "C:\\Program Files", "C:\\ProgramData");
+
     // ---------- 依赖 ----------
 
     private final ProjectImportRepository importRepo;
@@ -160,6 +172,7 @@ public class ProjectAnalysisService {
         if (!Files.exists(root)) {
             throw new ResponseStatusException(NOT_FOUND, "路径不存在：" + path);
         }
+        assertNotSystemDir(root);
 
         String name = root.getFileName() != null ? root.getFileName().toString() : "项目";
         Optional<ProjectImport> existing = importRepo.findByUserIdAndName(userId, name);
@@ -336,6 +349,15 @@ public class ProjectAnalysisService {
         String fileName;
         long size;
         boolean isSource; // 是否源码文件（非二进制/非构建产物）
+    }
+
+    /** 系统目录拒收（含其子孙目录）。 */
+    static void assertNotSystemDir(Path real) {
+        for (String sys : SYSTEM_ROOTS) {
+            if (real.startsWith(Paths.get(sys))) {
+                throw new ResponseStatusException(BAD_REQUEST, "出于安全考虑，不能读取系统目录：" + real);
+            }
+        }
     }
 
     private Skeleton scanSkeleton(Path root) throws IOException {
