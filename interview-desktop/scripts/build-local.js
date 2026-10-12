@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const DESKTOP = path.resolve(__dirname, '..');
-const frontend = path.resolve(DESKTOP, '..', 'frontend');
+const frontend = require('./resolve-web-dir').resolveWebDir(DESKTOP);
 const dist = path.join(frontend, 'dist');
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
