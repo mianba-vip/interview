@@ -22,10 +22,13 @@ public class ProfileService {
 
     private final MasteryRepository masteryRepo;
     private final ConceptRepository conceptRepo;
+    private final ConceptPoolService conceptPool;
 
-    public ProfileService(MasteryRepository masteryRepo, ConceptRepository conceptRepo) {
+    public ProfileService(MasteryRepository masteryRepo, ConceptRepository conceptRepo,
+                          ConceptPoolService conceptPool) {
         this.masteryRepo = masteryRepo;
         this.conceptRepo = conceptRepo;
+        this.conceptPool = conceptPool;
     }
 
     public List<TopicProfile> profile(Long userId) {
@@ -33,7 +36,9 @@ public class ProfileService {
         Map<Long, Mastery> byConcept = mastered.stream()
                 .collect(Collectors.toMap(Mastery::getConceptId, m -> m));
 
-        List<Concept> concepts = conceptRepo.findAll();
+        // 画像只展示可见概念（全局种子 + 本人方向）：findAll 会把其他用户的私有
+        // 方向概念以"掌握度 0"的形式铺进本人的画像页（名称/主题泄漏）。
+        List<Concept> concepts = conceptPool.visiblePool(userId);
 
         Map<String, List<ConceptProfile>> byTopic = new HashMap<>();
         Map<String, Integer> masteredLayer = new HashMap<>();
