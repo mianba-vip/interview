@@ -127,8 +127,21 @@ public class DailyPlanService {
      * 幂等：今天已生成过的方向不再重复建；但<b>每个方向都保证有今日任务</b>——
      * 某个方向若是今天后建的（首访问时还没生成），也要当场补上，否则该方向今日任务为空。
      * PENDING 未出题则异步补生成。返回今日任务。
+     *
+     * <p><b>刻意不加 @Transactional</b>（历史缺陷修复）：
+     * <ul>
+     *   <li>外层事务里 catch {@link DataIntegrityViolationException} 无效——Hibernate 约束冲突
+     *       会把事务标记 rollback-only，方法返回时抛 UnexpectedRollbackException（/today 直接 500），
+     *       "并发下重复生成读回已有任务"的兜底从未真正生效；</li>
+     *   <li>外层事务未提交就 submit 线程池，异步线程在 READ_COMMITTED 下看不到新建的
+     *       daily_task 行，findById 得 null 直接返回——预生成大概率丢失；</li>
+     *   <li>{@code generateAll} 里 {@code this.ensureToday(uid)} 自调用本就绕过了事务代理，
+     *       两条调用路径（定时器/控制器）语义不一致。</li>
+     * </ul>
+     * 去掉外层事务后：saveAll 自带单批原子性（整批插入要么全成功要么全回滚），
+     * DIV 恢复真正可用，generateAsync 提交时行已可见，定时器与控制器行为一致。
+     * 幂等性由「hasTasks 检查 + 唯一约束 + SKIPPED/DONE 不重写」共同保证，无需跨语句原子。
      */
-    @Transactional
     public List<DailyTask> ensureToday(Long userId) {
         LocalDate today = LocalDate.now();
         List<DailyTask> existing = taskRepo.findByUserIdAndTaskDate(userId, today);
@@ -408,8 +421,15 @@ public class DailyPlanService {
     /**
      * 异步预出题：READY 后回填 question_id。失败保持 PENDING，下次 ensureToday 重试。
      * 线程内重新加载实体，避免跨线程改已分离实体。
+     * 在途防重：同一任务同时只有一个预生成在跑（并发 ensureToday 会重复 submit，
+     * 一次多余的 LLM 调用几十秒几十厘，纯浪费）；完成/失败即移出，可重试。
      */
+    private final java.util.Set<Long> generating = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     private void generateAsync(Long taskId) {
+        if (!generating.add(taskId)) {
+            return;   // 已有同任务的预生成在途
+        }
         generatorPool.submit(() -> {
             try {
                 DailyTask t = taskRepo.findById(taskId).orElse(null);
@@ -429,6 +449,8 @@ public class DailyPlanService {
                 });
             } catch (Exception e) {
                 log.warn("预生成调度失败 taskId={}: {}", taskId, e.getMessage());
+            } finally {
+                generating.remove(taskId);
             }
         });
     }
