@@ -137,6 +137,13 @@ fi
 "${SSH[@]}" "$REMOTE" \
   "mv -f '$DEPLOY_DIR/web-image/nginx.conf.uploading' '$DEPLOY_DIR/web-image/nginx.conf'"
 echo "   ✓ web-image/nginx.conf"
+# web 镜像的 Dockerfile 入库管理（此前只存在于服务器上，仓库里的 Dockerfile.web
+# 因 COPY frontend/ 已断链）：与 nginx.conf 一并同步，保证服务器 web-image/Dockerfile
+# 与仓库 deploy/web-image.Dockerfile 一致。
+"${SCP[@]}" deploy/web-image.Dockerfile "$REMOTE:$DEPLOY_DIR/web-image/Dockerfile.uploading"
+"${SSH[@]}" "$REMOTE" \
+  "mv -f '$DEPLOY_DIR/web-image/Dockerfile.uploading' '$DEPLOY_DIR/web-image/Dockerfile'"
+echo "   ✓ web-image/Dockerfile"
 "${SCP[@]}" deploy/deploy-prod.sh "$REMOTE:$DEPLOY_DIR/deploy-prod.sh.uploading"
 "${SSH[@]}" "$REMOTE" \
   "mv -f '$DEPLOY_DIR/deploy-prod.sh.uploading' '$DEPLOY_DIR/deploy-prod.sh'"

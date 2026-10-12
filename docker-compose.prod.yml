@@ -115,12 +115,14 @@ services:
       minio:
         condition: service_healthy
 
+  # Web 静态服务：nginx 服务 web-image/web 静态树（官网落地页 + /app SPA + /download APK）。
+  # 构建上下文是【部署机上的】web-image/ 目录：SPA 由 mianba-web 仓库的 deploy-web.sh
+  # 上传到 web-image/web/app，官网由本仓库 deploy-local.sh 上传，均不在镜像内构建前端。
+  # Dockerfile 由 deploy-local.sh 同步为 web-image/Dockerfile（源：deploy/web-image.Dockerfile）。
   web:
     build:
-      context: .
-      dockerfile: Dockerfile.web
-      args:
-        VITE_API_BASE: ""
+      context: ./web-image
+      dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-18080}:80"
