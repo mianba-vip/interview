@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="frontend/public/logo.png" alt="面霸" width="88" />
+<img src="official-site/assets/logo.png" alt="面霸" width="88" />
 
 # 面霸
 
@@ -207,8 +207,11 @@ MAIL_FROM=面霸 <你的发件邮箱>
 
 ### 4. 启动前端（Web）
 
+前端 SPA 已拆分到独立仓库 [mianba-vip/mianba-web](https://github.com/mianba-vip/mianba-web)：
+
 ```bash
-cd frontend
+git clone https://github.com/mianba-vip/mianba-web.git ../mianba-web
+cd ../mianba-web
 npm install
 npm run dev         # http://localhost:5173，/api 已代理到 23333
 ```
@@ -251,7 +254,10 @@ Windows 推荐使用 `.exe` 安装版，以获得完整的自动更新能力；`
 ### 本地开发运行
 
 ```bash
-npm --prefix frontend install
+# 前端仓库与后端仓库平级放置（桌面打包脚本按 ../mianba-web 探测，
+# 也支持 MIANBA_WEB_DIR 环境变量指定其它路径）
+git clone https://github.com/mianba-vip/mianba-web.git ../mianba-web
+npm --prefix ../mianba-web install
 npm --prefix interview-desktop install
 cd interview-desktop
 npm start
@@ -414,8 +420,8 @@ interview/
 │   └── src/main/resources/
 │       ├── db/migration/         # Flyway 建表与迁移脚本（common + postgresql）
 │       └── application.yml
-├── frontend/                     # Vite + React + TS SPA（页面：首页/今日学习/练习/模拟面试/复盘/随手记/画像/设置…）
 ├── official-site/                # 官网落地页（静态，根路径 /）：介绍/特性/截图/下载/Star
+│                                # Web SPA 在独立仓库 mianba-vip/mianba-web（桌面构建时克隆到 frontend/ 或探测 ../mianba-web）
 ├── interview-desktop/            # Electron 桌面壳（本地/云端双模式）
 ├── docs/                         # 设计文档与实现清单
 └── docker-compose.dev.yml        # PostgreSQL / Redis / MinIO
