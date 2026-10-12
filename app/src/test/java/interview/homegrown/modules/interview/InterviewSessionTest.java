@@ -8,14 +8,19 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// 面试会话 Repository 测试（使用 application-test.yml 指向的 PostgreSQL 测试库）
+// 面试会话 Repository 测试（使用 application-test.yml 指向的 PostgreSQL 测试库）。
+// replace = NONE：禁止 @DataJpaTest 默认换成内嵌 H2——迁移脚本是 PG 方言，H2 跑不了。
 @DataJpaTest
+@ActiveProfiles("test")
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 public class InterviewSessionTest {
 
     @Autowired
