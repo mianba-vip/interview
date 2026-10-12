@@ -27,6 +27,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -708,11 +709,32 @@ public class ProjectAnalysisService {
         return name.isBlank() ? "项目" : name;
     }
 
-    /** 解压 zip 到目标目录。 */
+    /** zip 防护上限：条目数 / 解压后总字节数 / 单条目字节数（防 zip bomb 与超大项目拖爆磁盘）。 */
+    static final int MAX_ZIP_ENTRIES = 20_000;
+    static final long MAX_ZIP_TOTAL_BYTES = 512L * 1024 * 1024;   // 全部解压总量 ≤ 512MB
+    static final long MAX_ZIP_ENTRY_BYTES = 256L * 1024 * 1024;   // 单文件解压 ≤ 256MB
+    /** 单条目压缩比超过此值视为 bomb 特征（正常源码包 <10x；>100x 几乎只有 bomb）。 */
+    static final int MAX_ZIP_RATIO = 100;
+
+    /**
+     * 解压 zip 到目标目录。
+     * <p>防护（逐条目检查，超限即抛 IOException 中止整个导入）：
+     * <ul>
+     *   <li>路径穿越（zip slip）：resolve+normalize 后必须仍在 targetDir 内；</li>
+     *   <li>条目数上限：防几十万空条目拖死文件系统；</li>
+     *   <li>解压总量与单条目上限：防 zip bomb 撑爆磁盘/内存；</li>
+     *   <li>压缩比检查：解压字节数 &gt; 压缩字节数 × {@link #MAX_ZIP_RATIO} 判 bomb。</li>
+     * </ul>
+     */
     private void unzip(InputStream in, Path targetDir) throws IOException {
+        long total = 0;
+        int entries = 0;
         try (ZipInputStream zis = new ZipInputStream(in)) {
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
+                if (++entries > MAX_ZIP_ENTRIES) {
+                    throw new IOException("zip 条目过多（>" + MAX_ZIP_ENTRIES + "），疑似恶意压缩包");
+                }
                 Path out = targetDir.resolve(entry.getName()).normalize();
                 if (!out.startsWith(targetDir)) {
                     throw new IOException("zip 路径穿越: " + entry.getName());
@@ -721,7 +743,29 @@ public class ProjectAnalysisService {
                     Files.createDirectories(out);
                 } else {
                     Files.createDirectories(out.getParent());
-                    Files.copy(zis, out, StandardCopyOption.REPLACE_EXISTING);
+                    long compressed = Math.max(1, entry.getCompressedSize());
+                    Path tmp = Files.createTempFile(targetDir, "zip-", ".part");
+                    long written = 0;
+                    try {
+                        try (OutputStream os = Files.newOutputStream(tmp)) {
+                            written = zis.transferTo(os);
+                        }
+                        if (written > MAX_ZIP_ENTRY_BYTES) {
+                            throw new IOException("zip 单文件解压超限: " + entry.getName()
+                                    + " (" + written + " bytes)");
+                        }
+                        if (written > compressed * MAX_ZIP_RATIO) {
+                            throw new IOException("zip 单文件压缩比异常（" + written + "/" + compressed
+                                    + "），疑似 zip bomb: " + entry.getName());
+                        }
+                        total += written;
+                        if (total > MAX_ZIP_TOTAL_BYTES) {
+                            throw new IOException("zip 解压总量超限（>" + (MAX_ZIP_TOTAL_BYTES / 1024 / 1024) + "MB）");
+                        }
+                        Files.move(tmp, out, StandardCopyOption.REPLACE_EXISTING);
+                    } finally {
+                        Files.deleteIfExists(tmp);
+                    }
                 }
                 zis.closeEntry();
             }
