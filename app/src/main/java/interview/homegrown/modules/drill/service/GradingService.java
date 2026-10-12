@@ -24,6 +24,7 @@ import interview.homegrown.modules.drill.repository.QuestionBankRepository;
 import interview.homegrown.modules.drill.web.dto.GradeView;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -59,13 +60,15 @@ public class GradingService {
     private final ScheduleService scheduleService;
     private final SubPointPassService subPointPassService;
     private final ObjectMapper objectMapper;
+    /** 显式事务边界：LLM 判分（10~60s）绝不能在事务里占着连接（见 grade/finish 注释）。 */
+    private final TransactionTemplate transactions;
 
     public GradingService(GradeResultRepository gradeRepo, DrillRunRepository runRepo,
                           QuestionBankRepository qbRepo, MasteryRepository masteryRepo,
                           DrillTurnRepository turnRepo,
                           GraderText graderText, GraderMcq graderMcq, ScheduleService scheduleService,
                           SubPointPassService subPointPassService,
-                          ObjectMapper objectMapper) {
+                          ObjectMapper objectMapper, TransactionTemplate transactions) {
         this.gradeRepo = gradeRepo;
         this.runRepo = runRepo;
         this.qbRepo = qbRepo;
@@ -76,10 +79,17 @@ public class GradingService {
         this.scheduleService = scheduleService;
         this.subPointPassService = subPointPassService;
         this.objectMapper = objectMapper;
+        this.transactions = transactions;
     }
 
-    @Transactional
+    /**
+     * 提交作答并判分。<b>刻意不用 @Transactional</b>（历史缺陷修复）：FREE_TEXT 判分是 LLM
+     * 调用（10~60s），放事务里会长时间占住一个连接——并发几个提交就能耗尽 Hikari 池
+     * （默认 10），整站请求排队。结构：校验 + 判分（无事务）→ 落库走显式短事务
+     * （GradeResult + drill_turn + mastery/run 状态全部原子）。
+     */
     public GradeView grade(Long userId, Long runId, String rawAnswer) {
+        // —— 阶段 1（无事务）：校验 + 判分 ——
         DrillRun run = runRepo.findByUserIdAndId(userId, runId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
         if (run.getStatus() != DrillRunStatus.READY && run.getStatus() != DrillRunStatus.ANSWERING) {
@@ -95,27 +105,35 @@ public class GradingService {
             case CHOICE -> graderMcq;
             case CODE -> throw new ResponseStatusException(NOT_IMPLEMENTED, "CODE 待接力扣判题");
         };
-        Grader.GraderOutput out = grader.grade(runId, q, rawAnswer, timed);
+        Grader.GraderOutput out = grader.grade(runId, q, rawAnswer, timed);   // LLM（FREE_TEXT），无事务
 
-        saveResult(runId, q, rawAnswer, out);
+        // —— 阶段 2（显式短事务）：落库 ——
+        return transactions.execute(tx -> {
+            DrillRun runTx = runRepo.findByUserIdAndId(userId, runId)
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
+            QuestionBank qTx = qbRepo.findById(runTx.getQuestionId())
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目不存在"));
 
-        // LEARN 模式把题干、评分点、用户原答案、判分结果落到 drill_turn，
-        // 供「问答记录」回看自己的作答；REHEARSAL 已在 RehearsalService 自行维护 turns。
-        // 教学讲解（tutor_text）由 SSE 端点 /drill/{runId}/tutor-stream 异步生成后写回，
-        // 这里不再同步写——避免阻塞判分提交，且让前端能逐 token 流式接收。
-        if (run.getMode() == DrillMode.LEARN) {
-            DrillTurn turn = new DrillTurn();
-            turn.setRunId(runId);
-            turn.setRound(0);
-            turn.setStem(q.getStem());
-            turn.setPointsJson(q.getPointsJson());
-            turn.setRawAnswer(rawAnswer);
-            turn.setByConceptJson(out.byConceptJson());
-            turn.setRawScore(out.rawScore());
-            turnRepo.save(turn);
-        }
+            saveResult(runId, qTx, rawAnswer, out);
 
-        return finalizeAndBuildView(userId, run, q, out, timed);
+            // LEARN 模式把题干、评分点、用户原答案、判分结果落到 drill_turn，
+            // 供「问答记录」回看自己的作答；REHEARSAL 已在 RehearsalService 自行维护 turns。
+            // 教学讲解（tutor_text）由 SSE 端点 /drill/{runId}/tutor-stream 异步生成后写回，
+            // 这里不再同步写——避免阻塞判分提交，且让前端能逐 token 流式接收。
+            if (runTx.getMode() == DrillMode.LEARN) {
+                DrillTurn turn = new DrillTurn();
+                turn.setRunId(runId);
+                turn.setRound(0);
+                turn.setStem(qTx.getStem());
+                turn.setPointsJson(qTx.getPointsJson());
+                turn.setRawAnswer(rawAnswer);
+                turn.setByConceptJson(out.byConceptJson());
+                turn.setRawScore(out.rawScore());
+                turnRepo.save(turn);
+            }
+
+            return finalizeAndBuildView(userId, runTx, qTx, out, timed);
+        });
     }
 
     /**
@@ -129,11 +147,12 @@ public class GradingService {
      * 诸如“怎么实现”“直接把列表转为集合就行”既可能出现在索要答案中，也可能只是正常作答。
      * 服务端因此只信任前端「看答案」按钮发送的显式 {@code reveal=true}，普通聊天文本永远不会改变揭示边界。
      *
+     * <p>同 {@link #grade}：判分（LLM）在无事务阶段，落库走显式短事务。
+     *
      * @param userId 当前用户
      * @param runId 作答 ID
      * @return 判分结果
      */
-    @Transactional
     public GradeView finish(Long userId, Long runId) {
         DrillRun run = runRepo.findByUserIdAndId(userId, runId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
@@ -210,25 +229,35 @@ public class GradingService {
             // 选错：不再按固定比例扣分，改走与开放题同一套 LLM 判分——按与 AI 的引导交互表现给分。
             out = mcqOut.rawScore().compareTo(java.math.BigDecimal.valueOf(100)) == 0
                     ? mcqOut
-                    : graderText.gradeWithConversation(runId, q, rawAnswer, timed, conversation);
+                    : graderText.gradeWithConversation(runId, q, rawAnswer, timed, conversation);   // LLM，无事务
         } else {
             throw new ResponseStatusException(NOT_IMPLEMENTED, "CODE 待接力扣判题");
         }
 
-        // 落 GradeResult
-        saveResult(runId, q, rawAnswer, out);
+        // —— 阶段 2（显式短事务）：落 GradeResult + 写回 turn0 + 结算 ——
+        List<DrillTurn> turnsFinal = turns;
+        String answerFinal = rawAnswer;
+        return transactions.execute(tx -> {
+            DrillRun runTx = runRepo.findByUserIdAndId(userId, runId)
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
+            QuestionBank qTx = qbRepo.findById(runTx.getQuestionId())
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目不存在"));
 
-        // 把判分结果写回 round=0 的 turn（不新建 turn，turns 已由 /chat 创建）
-        DrillTurn turn0 = turns.stream()
-                .filter(t -> t.getRound() == 0)
-                .findFirst()
-                .orElse(turns.get(0));
-        turn0.setPointsJson(q.getPointsJson());
-        turn0.setByConceptJson(out.byConceptJson());
-        turn0.setRawScore(out.rawScore());
-        turnRepo.save(turn0);
+            // 落 GradeResult
+            saveResult(runId, qTx, answerFinal, out);
 
-        return finalizeAndBuildView(userId, run, q, out, timed);
+            // 把判分结果写回 round=0 的 turn（不新建 turn，turns 已由 /chat 创建）
+            DrillTurn turn0 = turnsFinal.stream()
+                    .filter(t -> t.getRound() == 0)
+                    .findFirst()
+                    .orElse(turnsFinal.get(0));
+            turn0.setPointsJson(qTx.getPointsJson());
+            turn0.setByConceptJson(out.byConceptJson());
+            turn0.setRawScore(out.rawScore());
+            turnRepo.save(turn0);
+
+            return finalizeAndBuildView(userId, runTx, qTx, out, timed);
+        });
     }
 
     /** 选择题作答识别：整段里出现独立的 A-D 字母（"B"、"AC"、"选 B"、"答案:B"、"我选C" 都算）。 */

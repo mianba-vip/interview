@@ -86,6 +86,8 @@ public class DailyPlanService {
     private final CorpusService corpusService;
     private final ProgressContextService progressContext;
     private final AiSettingsService settings;
+    /** 显式事务边界：出题（LLM，10~60s）绝不能在事务里占着连接（见 ensureReady 注释）。 */
+    private final org.springframework.transaction.support.TransactionTemplate transactions;
 
     private final ExecutorService generatorPool;
 
@@ -93,7 +95,8 @@ public class DailyPlanService {
                             ConceptRepository conceptRepo, MasteryRepository masteryRepo,
                             QuestionBankRepository qbRepo, SelectionService selectionService,
                             QuestionService questionService, CorpusService corpusService,
-                            ProgressContextService progressContext, AiSettingsService settings) {
+                            ProgressContextService progressContext, AiSettingsService settings,
+                            org.springframework.transaction.support.TransactionTemplate transactions) {
         this.taskRepo = taskRepo;
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
@@ -104,6 +107,7 @@ public class DailyPlanService {
         this.corpusService = corpusService;
         this.progressContext = progressContext;
         this.settings = settings;
+        this.transactions = transactions;
         this.generatorPool = Executors.newFixedThreadPool(2, r -> {
             Thread t = new Thread(r, "daily-task-gen");
             t.setDaemon(true);
@@ -274,16 +278,26 @@ public class DailyPlanService {
                 userId, LocalDate.now(), List.of(DailyTask.STATUS_READY));
     }
 
-    /** 同步兜底出题：预生成还没好（PENDING）时现场出一题，保证任务可立即开练。 */
-    @Transactional
+    /**
+     * 同步兜底出题：预生成还没好（PENDING）时现场出一题，保证任务可立即开练。
+     * <p>出题是 LLM 调用（10~60s），<b>刻意不用 @Transactional</b>——放事务里会长期占住一个
+     * 连接，并发几路就把 Hikari 池（默认 10）占满、整站排队。出题在无事务阶段完成后，
+     * 回填 question_id/READY 走显式短事务；事务内重读任务，若并发方已回填则不覆盖。
+     */
     public boolean ensureReady(Long userId, Long taskId) {
         DailyTask t = requireTask(userId, taskId);
         if (t.getQuestionId() == null) {
             SelectedTask sel = selectionService.pickFor(userId, t.getConceptId());
-            QuestionBank qb = questionService.generate(sel, taskContext(t));
-            t.setQuestionId(qb.getId());
-            t.setStatus(DailyTask.STATUS_READY);
-            taskRepo.save(t);
+            QuestionBank qb = questionService.generate(sel, taskContext(t));   // LLM，无事务
+            return Boolean.TRUE.equals(transactions.execute(tx -> {
+                DailyTask task = requireTask(userId, taskId);   // 事务内重读最新状态
+                if (task.getQuestionId() == null) {
+                    task.setQuestionId(qb.getId());
+                    task.setStatus(DailyTask.STATUS_READY);
+                    taskRepo.save(task);
+                }
+                return task.getQuestionId() != null;
+            }));
         }
         return t.getQuestionId() != null;
     }
