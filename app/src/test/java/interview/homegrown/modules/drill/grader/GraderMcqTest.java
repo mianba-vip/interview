@@ -38,9 +38,23 @@ class GraderMcqTest {
     }
 
     @Test
+    @DisplayName("带英文解释的作答不再被字母拆词误判（回归：BECAUSE 拆出 A/C 导致必错）")
+    void proseAnswerWithExplanation() {
+        assertThat(score("B, because it's faster")).isEqualTo(100.0);
+        assertThat(score("I think B")).isEqualTo(100.0);
+        assertThat(score("B，因为它更安全")).isEqualTo(100.0);
+        assertThat(score("The answer is B")).isEqualTo(100.0);
+        // "not" 不是键（N/O/T 不在选项键内）被忽略；但独立的 "A" token 仍是字母键，
+        // 机械语义 = 同时选了 B 和 A → 按对错项比例 75 分（与旧实现一致，不含误判膨胀）
+        assertThat(score("B, not A")).isEqualTo(75.0);
+    }
+
+    @Test
     @DisplayName("直接输入选项文本判对；选错组合按对错项比例给分")
     void textMatchAndPartial() {
         assertThat(score("乙说法")).isEqualTo(100.0);
         assertThat(score("A C")).isEqualTo(25.0);
+        // 连写多选 "AC" 与 "A C" 等价
+        assertThat(score("AC")).isEqualTo(25.0);
     }
 }
