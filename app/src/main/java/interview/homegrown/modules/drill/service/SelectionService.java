@@ -43,12 +43,13 @@ public class SelectionService {
     private final SubPointPassRepository subPointPassRepo;
     private final SubPointPassService subPointPassService;
     private final QuestionBankRepository qbRepo;
+    private final ConceptPoolService conceptPool;
 
     public SelectionService(ConceptRepository conceptRepo, MasteryRepository masteryRepo,
                             CombinationPolicy combinationPolicy, LessonGenerator lessonGenerator,
                             DrillRunRepository runRepo, SubPointPassRepository subPointPassRepo,
                             SubPointPassService subPointPassService,
-                            QuestionBankRepository qbRepo) {
+                            QuestionBankRepository qbRepo, ConceptPoolService conceptPool) {
         this.conceptRepo = conceptRepo;
         this.masteryRepo = masteryRepo;
         this.combinationPolicy = combinationPolicy;
@@ -57,13 +58,16 @@ public class SelectionService {
         this.subPointPassRepo = subPointPassRepo;
         this.subPointPassService = subPointPassService;
         this.qbRepo = qbRepo;
+        this.conceptPool = conceptPool;
     }
 
     public SelectedTask pickNext(Long userId) {
         List<Mastery> mastered = masteryRepo.findByUserId(userId);
         Map<Long, Mastery> byConcept = mastered.stream()
                 .collect(Collectors.toMap(Mastery::getConceptId, Function.identity(), (a, b) -> a));
-        List<Concept> all = conceptRepo.findAll();
+        // 可见池 = 全局种子 + 本人方向的概念；绝不能用 findAll()——那会把其他用户的
+        // 私有方向概念选进题干（多用户部署下的跨用户数据泄漏）。
+        List<Concept> all = conceptPool.visiblePool(userId);
         if (all.isEmpty()) {
             throw new IllegalStateException("concept 表为空，请先导入知识矩阵");
         }
@@ -79,7 +83,8 @@ public class SelectionService {
                 .collect(Collectors.toMap(Mastery::getConceptId, Function.identity(), (a, b) -> a));
         Concept primary = conceptRepo.findById(conceptId)
                 .orElseThrow(() -> new IllegalArgumentException("concept 不存在: " + conceptId));
-        return combinationPolicy.build(primary, conceptRepo.findAll(), byConcept);
+        // 锚点伙伴同样只从可见池取：别的用户的私有概念不能被拉来当 ANCHOR（题干会带出其名称/主题）。
+        return combinationPolicy.build(primary, conceptPool.visiblePool(userId), byConcept);
     }
 
     /**

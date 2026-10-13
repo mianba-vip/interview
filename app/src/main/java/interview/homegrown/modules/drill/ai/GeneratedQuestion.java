@@ -17,6 +17,8 @@ public class GeneratedQuestion {
     public String stem;
     public List<ConceptPoints> byConcept;
     public List<Point> points;
+    /** 选择题选项（format=CHOICE 时出题器给出；GraderMcq 按 key 精确判分，免 LLM）。 */
+    public List<McqOption> options;
 
     public static class ConceptPoints {
         public int conceptIndex;

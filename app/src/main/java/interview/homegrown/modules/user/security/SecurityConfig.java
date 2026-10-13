@@ -11,6 +11,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -24,11 +25,15 @@ public class SecurityConfig {
 
     @Bean
     @Order(1)
-    public SecurityFilterChain drillSecurityFilterChain(HttpSecurity http, JwtAuthFilter jwtAuthFilter) throws Exception {
+    public SecurityFilterChain drillSecurityFilterChain(HttpSecurity http, JwtAuthFilter jwtAuthFilter,
+                                                        CorsConfigurationSource corsConfigurationSource) throws Exception {
         // /api/demo/** 的 AI 演示端点会真调 LLM，必须收进鉴权链，防止公网裸奔烧钱
         http.securityMatcher("/api/drill/**", "/api/auth/**", "/api/user/**", "/api/settings/**", "/api/demo/**","/api/knowledge/**",
                 "/api/interviews/**", "/api/resumes/**", "/api/study-plan/**", "/api/corpus/**",
                 "/api/project/**")
+                // 必须显式接入 CORS：预检 OPTIONS 不带凭证，要在鉴权之前短路；
+                // 否则跨域（APK WebView 源为 https://localhost）的预检被 401 且无 CORS 头 → Failed to fetch
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
@@ -56,8 +61,9 @@ public class SecurityConfig {
 
     @Bean
     @Order(2)
-    public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(AbstractHttpConfigurer::disable)
+    public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http, CorsConfigurationSource corsConfigurationSource) throws Exception {
+        http.cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
         return http.build();
     }

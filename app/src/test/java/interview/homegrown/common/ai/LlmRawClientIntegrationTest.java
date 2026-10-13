@@ -42,7 +42,10 @@ class LlmRawClientIntegrationTest {
         p.setModel(env.getOrDefault("MODEL_NAME", "deepseek-v4-flash"));
         p.setTemperature(0.7);
         config.getProviders().put("deepseek", p);
-        assertTrue(p.isAvailable(), "API_KEY 未配置：请在 .env 里填 API_KEY");
+        // 无 API_KEY 时跳过（而不是失败）：这是真实调用 DeepSeek 的集成测试，
+        // 仅在本地 .env 配置了 key 时才有意义；CI / 无 key 环境按 JUnit 假设跳过。
+        org.junit.jupiter.api.Assumptions.assumeTrue(p.isAvailable(),
+                "API_KEY 未配置：跳过真实 LLM 集成测试（在 .env 里填 API_KEY 后才会执行）");
         // LlmRawClient 依赖 AiSettingsService 提供 key：测试里继承覆写，直接注入 .env 的 key
         AiSettingsService settings = new AiSettingsService(null, config) {
             @Override

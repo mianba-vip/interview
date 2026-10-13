@@ -11,5 +11,6 @@ public interface ConceptRepository extends JpaRepository<Concept, Long> {
     List<Concept> findByLayer(int layer);
     List<Concept> findByStudyPlanId(Long studyPlanId);
     List<Concept> findByStudyPlanIdIn(List<Long> studyPlanIds);
+    List<Concept> findByStudyPlanIdIsNull();
     Optional<Concept> findByStudyPlanIdAndName(Long studyPlanId, String name);
 }

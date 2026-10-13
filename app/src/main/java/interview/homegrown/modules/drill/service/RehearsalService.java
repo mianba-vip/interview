@@ -11,6 +11,7 @@ import interview.homegrown.modules.drill.web.dto.RehearsalView;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
@@ -58,6 +59,8 @@ public class RehearsalService {
     private final GradeResultRepository gradeRepo;
     private final ObjectMapper objectMapper;
     private final ProgressContextService progressContext;
+    /** 显式事务边界：LLM 调用（出题/判分，10~60s）绝不能在事务里占着连接（见 start/answer 注释）。 */
+    private final TransactionTemplate transactions;
 
     public RehearsalService(SelectionService selectionService, QuestionService questionService,
                             GraderText graderText,
@@ -65,7 +68,7 @@ public class RehearsalService {
                             DrillTurnRepository turnRepo, QuestionBankRepository qbRepo,
                             MasteryRepository masteryRepo, ConceptRepository conceptRepo,
                             GradeResultRepository gradeRepo, ObjectMapper objectMapper,
-                            ProgressContextService progressContext) {
+                            ProgressContextService progressContext, TransactionTemplate transactions) {
         this.selectionService = selectionService;
         this.questionService = questionService;
         this.graderText = graderText;
@@ -78,18 +81,42 @@ public class RehearsalService {
         this.gradeRepo = gradeRepo;
         this.objectMapper = objectMapper;
         this.progressContext = progressContext;
+        this.transactions = transactions;
     }
 
     // ---------------------------------------------------------------- start
 
-    @Transactional
+    /**
+     * 开场。<b>刻意不用 @Transactional</b>（历史缺陷修复）：出题是 LLM 调用（10~60s），
+     * 放在事务里会长时间占住一个连接——并发几个开场就能耗尽 Hikari 池（默认 10），
+     * 整站请求排队。结构：闸门校验 + 出题（无事务）→ 落库走显式短事务
+     * （{@link #persistWithGate}），唯一 active 闸门的冲突在<b>事务外</b> catch，
+     * 真正换回 409 而不是 UnexpectedRollbackException。
+     */
     public RehearsalView start(Long userId, Long conceptId) {
+        // V28 全局唯一 active 闸门（每用户最多一个 READY/ANSWERING，不分 mode）前置检查：
+        // active 是 REHEARSAL 就直接恢复（与 LEARN openRun 同策略）；
+        // 是别的 mode 则立即 409——绝不能先花 ~20s 现场生成题目、最后才撞物理闸门。
+        List<DrillRun> actives = runRepo.findByUserIdAndStatusIn(userId,
+                List.of(DrillRunStatus.READY, DrillRunStatus.ANSWERING));
+        DrillRun active = actives.isEmpty() ? null : actives.get(0);
+        if (active != null) {
+            if (active.getMode() != DrillMode.REHEARSAL) {
+                throw new ResponseStatusException(CONFLICT, "已有未完成的作答，请先完成或搁置");
+            }
+            DrillTurn turn = turnRepo.findByRunIdAndRound(active.getId(), active.getCurrentRound())
+                    .or(() -> turnRepo.findByRunIdAndRound(active.getId(), 0))
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "未完成面试的题目不存在"));
+            return RehearsalView.asking(active.getId(), active.getCurrentRound(),
+                    active.getMaxRound(), turn.getStem());
+        }
+
         Long target = conceptId != null ? conceptId : pickEligibleConcept(userId);
         assertEligible(userId, target);
 
         SelectedTask task = selectionService.pickFor(userId, target);
-        QuestionBank q = questionService.generate(task);
-        return persistRehearsalRun(userId, q, null, MAX_FOLLOWUP);
+        QuestionBank q = questionService.generate(task);   // LLM，无事务
+        return persistWithGate(() -> persistRehearsalRun(userId, q, null, MAX_FOLLOWUP));
     }
 
     /**
@@ -100,7 +127,6 @@ public class RehearsalService {
      * <p>源 run 必须是当前用户已 GRADED 的 LEARN run；未判分或非 LEARN 一律 400。
      * <p>同 active-run 物理闸门语义：有 active 直接恢复之（与 openRun 同策略）。
      */
-    @Transactional
     public RehearsalView spawnFollowup(Long userId, Long sourceRunId) {
         if (sourceRunId == null) {
             throw new ResponseStatusException(BAD_REQUEST, "sourceRunId 不能为空");
@@ -119,12 +145,26 @@ public class RehearsalService {
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目已失效"));
         // source_run_id 已建立自引用 FK，spawn 即 spawn —— 但保存时同一事务里两次 useIdentity
         // 会撞，拆出来：先 persist 拿 id，再 update source_run_id。
-        return persistRehearsalRun(userId, q, source.getId(), FOLLOWUP_MAX_ROUND);
+        return persistWithGate(() -> persistRehearsalRun(userId, q, source.getId(), FOLLOWUP_MAX_ROUND));
+    }
+
+    /**
+     * 显式短事务落库 + 唯一 active 闸门冲突处理。
+     * <p>DataIntegrityViolationException 必须在<b>事务外</b> catch：事务内 catch 后继续提交
+     * 会撞 UnexpectedRollbackException（旧实现的 409 从未真正返回过）。
+     */
+    private RehearsalView persistWithGate(java.util.function.Supplier<RehearsalView> persist) {
+        try {
+            return transactions.execute(tx -> persist.get());
+        } catch (DataIntegrityViolationException e) {
+            throw new ResponseStatusException(CONFLICT, "已有未完成的作答，请先完成或搁置");
+        }
     }
 
     /**
      * 持久化一个 REHEARSAL run（无论来源）：active 闸门、写 run + turn-0，返回 asking view。
      * <p>sourceRunId 非空时需要在 save 后再 setSourceRunId（自引用 FK 同事务两次 INSERT 难做）。
+     * <p><b>只在 {@link #persistWithGate} 的事务里调用</b>，勿直接调（会绕过闸门冲突转换）。
      */
     private RehearsalView persistRehearsalRun(Long userId, QuestionBank q,
                                               Long sourceRunId, int maxRound) {
@@ -137,11 +177,7 @@ public class RehearsalService {
         run.setTiming("COUNTDOWN");             // 计时
         run.setCurrentRound(0);
         run.setMaxRound(maxRound);
-        try {
-            run = runRepo.save(run);
-        } catch (DataIntegrityViolationException e) {
-            throw new ResponseStatusException(CONFLICT, "已有未完成的作答，请先完成或搁置");
-        }
+        run = runRepo.save(run);   // 冲突（唯一 active 闸门）由 persistWithGate 统一转 409
 
         // 自引用 FK：同事务里 save 后再 setSourceRunId，再 save 一次
         if (sourceRunId != null) {
@@ -179,7 +215,6 @@ public class RehearsalService {
         }
     }
     /** 从学习计划启动：从该方向「已掌握(level>=2)」的概念里，挑最久没练的一个 */
-    @Transactional
     public RehearsalView startFromPlan(Long userId, Long planId) {
         List<Concept> planConcepts = conceptRepo.findByStudyPlanId(planId);
         if (planConcepts.isEmpty()) {
@@ -198,7 +233,11 @@ public class RehearsalService {
 
     // --------------------------------------------------------------- answer
 
-    @Transactional
+    /**
+     * 提交一轮作答。<b>刻意不用 @Transactional</b>：判分是 LLM 调用（10~60s），放事务里
+     * 会长时间占住连接（见 {@link #start} 注释）。结构：校验 + 判分（无事务）→
+     * 写回 turn / 推进轮次 / 结算 走显式短事务，全部落库原子。
+     */
     public RehearsalView answer(Long userId, Long runId, String rawAnswer) {
         DrillRun run = runRepo.findByUserIdAndId(userId, runId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
@@ -223,26 +262,35 @@ public class RehearsalService {
             context = progressContext.contextFor(userId, ids);
         }
         Grader.GraderOutput out = graderText.gradeRaw(
-                turn.getStem(), turn.getPointsJson(), q.getConceptIds(), rawAnswer, true, context);
+                turn.getStem(), turn.getPointsJson(), q.getConceptIds(), rawAnswer, true, context);   // LLM，无事务
 
-        turn.setRawAnswer(rawAnswer);
-        turn.setByConceptJson(out.byConceptJson());
-        turn.setRawScore(out.rawScore());
-        turn.setPassed(GradeScale.passed(out.rawScore()));
-        // 教学讲解由 SSE 端点 /drill/{runId}/tutor-stream 异步生成后写回，
-        // 这里不再同步生成——避免阻塞追问提交 + 让前端能逐 token 流式接收讲解。
-        turnRepo.save(turn);
-
+        // —— 阶段 2：显式短事务，写回判分结果 + 推进轮次/结算，原子落库 ——
         boolean roundsLeft = run.getCurrentRound() < run.getMaxRound();
         boolean isFollowup = run.getSourceRunId() != null;
         // 主动 /rehearsal 守纪律：未 pass 不追（连本层都答不上来，深挖只是重复羞辱）
         // 追问场（sourceRunId 非空）完全放手：让用户追问到底
-        if (roundsLeft && (isFollowup || Boolean.TRUE.equals(turn.getPassed()))) {
-            // 不再同步调 LLM 生成"下一问"（前端已改为用户主动追问模式，那次生成纯浪费且阻塞 POST）。
-            // 仅自增轮次并建占位 turn，讲解由前端订阅的 /tutor-stream 异步流式生成。
-            return advanceRound(run, q);
-        }
-        return settle(userId, run, q);
+        boolean advance = roundsLeft && (isFollowup || GradeScale.passed(out.rawScore()));
+        return transactions.execute(tx -> {
+            DrillRun runTx = runRepo.findByUserIdAndId(userId, runId)
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "作答不存在"));
+            QuestionBank qTx = qbRepo.findById(runTx.getQuestionId())
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "题目不存在"));
+            DrillTurn turnTx = turnRepo.findByRunIdAndRound(runId, runTx.getCurrentRound())
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "本轮问题不存在"));
+            turnTx.setRawAnswer(rawAnswer);
+            turnTx.setByConceptJson(out.byConceptJson());
+            turnTx.setRawScore(out.rawScore());
+            turnTx.setPassed(GradeScale.passed(out.rawScore()));
+            // 教学讲解由 SSE 端点 /drill/{runId}/tutor-stream 异步生成后写回，
+            // 这里不再同步生成——避免阻塞追问提交 + 让前端能逐 token 流式接收讲解。
+            turnRepo.save(turnTx);
+            if (advance) {
+                // 不再同步调 LLM 生成"下一问"（前端已改为用户主动追问模式，那次生成纯浪费且阻塞 POST）。
+                // 仅自增轮次并建占位 turn，讲解由前端订阅的 /tutor-stream 异步流式生成。
+                return advanceRound(runTx, qTx);
+            }
+            return settle(userId, runTx, qTx);
+        });
     }
 
     /**
