@@ -243,6 +243,9 @@ public class LlmRawClient {
         }
         boolean thinking = enableThinking;
         for (int attempt = 0; attempt < 2; attempt++) {
+            // 遥测按「一次模型调用」计：思考超时降级重试是第二次调用，单独计时
+            AiTelemetry.Call call = telemetry.start(cfg().provider(), cfg().model(), "stream");
+            boolean success = false;
             try {
                 Map<String, Object> body = buildStreamBody(system, user, images, thinking);
                 HttpResponse<InputStream> response = sendStreamWithRetry(body, onError);
@@ -254,8 +257,11 @@ public class LlmRawClient {
                     return;
                 }
                 long waitMs = thinking ? THINK_RETRY_MS : NO_THINK_MAX_WAIT_MS;
-                boolean thinkingTimeout = readStreamLoop(response, onToken, onError, fallbackToReasoning, onReasoning, waitMs);
-                if (!thinkingTimeout) return;
+                boolean thinkingTimeout = readStreamLoop(response, onToken, onError, fallbackToReasoning, onReasoning, waitMs, call);
+                if (!thinkingTimeout) {
+                    success = true;
+                    return;
+                }
                 if (!thinking) {
                     // 非思考流等待仍超时（部分 provider 关不掉思考，如小米 MiMo）：
                     // 重发完全相同的请求毫无意义——按失败结束，调用方给出可重试提示
@@ -268,6 +274,8 @@ public class LlmRawClient {
                 if (t instanceof InterruptedException) Thread.currentThread().interrupt();
                 notifyError(onError, t);
                 return;
+            } finally {
+                call.finish(success);
             }
         }
     }
@@ -308,7 +316,7 @@ public class LlmRawClient {
     private boolean readStreamLoop(HttpResponse<InputStream> response,
                                    Consumer<String> onToken, Consumer<Throwable> onError,
                                    boolean fallbackToReasoning, Consumer<String> onReasoning,
-                                   long noContentTimeoutMs) throws Exception {
+                                   long noContentTimeoutMs, AiTelemetry.Call call) throws Exception {
         long firstTokenAt = -1;
         boolean hasContent = false;
         try (BufferedReader reader = new BufferedReader(

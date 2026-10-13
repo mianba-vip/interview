@@ -10,6 +10,8 @@ import interview.homegrown.modules.corpus.service.CorpusService;
 
 import interview.homegrown.common.ai.AiConfig;
 import interview.homegrown.common.ai.AiSettingsService;
+import interview.homegrown.common.async.DurableJobQueue;
+import interview.homegrown.common.async.DurableJobType;
 import interview.homegrown.modules.drill.domain.Concept;
 import interview.homegrown.modules.studyplan.domain.DailyTask;
 import interview.homegrown.modules.drill.domain.Mastery;
@@ -89,14 +91,19 @@ public class DailyPlanService {
     /** 显式事务边界：出题（LLM，10~60s）绝不能在事务里占着连接（见 ensureReady 注释）。 */
     private final org.springframework.transaction.support.TransactionTemplate transactions;
 
-    private final ExecutorService generatorPool;
+    /** 持久异步队列：PENDING 任务入队，由 DurableJobWorker 领取执行（重启不丢、天然幂等防重）。 */
+    private final DurableJobQueue jobs;
+
+    /** 出题回填后的轻量直读（避免为一次 SELECT 拉起实体关联）。 */
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     public DailyPlanService(DailyTaskRepository taskRepo, StudyPlanRepository planRepo,
                             ConceptRepository conceptRepo, MasteryRepository masteryRepo,
                             QuestionBankRepository qbRepo, SelectionService selectionService,
                             QuestionService questionService, CorpusService corpusService,
                             ProgressContextService progressContext, AiSettingsService settings,
-                            org.springframework.transaction.support.TransactionTemplate transactions) {
+                            org.springframework.transaction.support.TransactionTemplate transactions,
+                            DurableJobQueue jobs, org.springframework.jdbc.core.JdbcTemplate jdbc) {
         this.taskRepo = taskRepo;
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
@@ -108,11 +115,8 @@ public class DailyPlanService {
         this.progressContext = progressContext;
         this.settings = settings;
         this.transactions = transactions;
-        this.generatorPool = Executors.newFixedThreadPool(2, r -> {
-            Thread t = new Thread(r, "daily-task-gen");
-            t.setDaemon(true);
-            return t;
-        });
+        this.jobs = jobs;
+        this.jdbc = jdbc;
     }
 
     /** 定时：每天 06:30 为所有用户预生成今日任务（主动推送的承载——打开即 READY，无需等待）。 */
@@ -441,39 +445,29 @@ public class DailyPlanService {
     }
 
     /**
-     * 异步预出题：READY 后回填 question_id。失败保持 PENDING，下次 ensureToday 重试。
-     * 线程内重新加载实体，避免跨线程改已分离实体。
-     * 在途防重：同一任务同时只有一个预生成在跑（并发 ensureToday 会重复 submit，
-     * 一次多余的 LLM 调用几十秒几十厘，纯浪费）；完成/失败即移出，可重试。
+     * 持久队列消费端：为一条 PENDING 任务出题并置 READY（{@link DurableJobWorker} 在
+     * 该用户的 AI 配置上下文里调用，无需再包 withTaskConfig）。
+     * <p>出题（LLM，10~60s）在事务外完成；回填走显式短事务且事务内重读——
+     * 并发方（{@link #ensureReady} 同步兜底）已回填时不覆盖。失败抛出即由队列
+     * 按退避重试（任务保持 PENDING），重试耗尽进死信。
      */
-    private final java.util.Set<Long> generating = java.util.concurrent.ConcurrentHashMap.newKeySet();
-
-    private void generateAsync(Long taskId) {
-        if (!generating.add(taskId)) {
-            return;   // 已有同任务的预生成在途
+    public void runJob(Long taskId, Long userId) {
+        DailyTask t = taskRepo.findById(taskId).orElse(null);
+        if (t == null || t.getQuestionId() != null
+                || !DailyTask.STATUS_PENDING.equals(t.getStatus())) {
+            return;   // 已出题/已就绪/已作废：幂等跳过
         }
-        generatorPool.submit(() -> {
-            try {
-                DailyTask t = taskRepo.findById(taskId).orElse(null);
-                if (t == null || t.getQuestionId() != null) return;
-                // 后台线程没有请求上下文，取任务归属用户的库配置（否则云端无服务器级 key，
-                // 预生成全部报"尚未配置 API Key"、任务永远 PENDING）
-                settings.withTaskConfig(settings.userConfig(t.getUserId()), () -> {
-                    try {
-                        SelectedTask sel = selectionService.pickFor(t.getUserId(), t.getConceptId());
-                        QuestionBank qb = questionService.generate(sel, taskContext(t));
-                        t.setQuestionId(qb.getId());
-                        t.setStatus(DailyTask.STATUS_READY);
-                        taskRepo.save(t);
-                    } catch (Exception e) {
-                        log.warn("预生成题目失败 taskId={}: {}", taskId, e.getMessage());
-                    }
-                });
-            } catch (Exception e) {
-                log.warn("预生成调度失败 taskId={}: {}", taskId, e.getMessage());
-            } finally {
-                generating.remove(taskId);
+        SelectedTask sel = selectionService.pickFor(t.getUserId(), t.getConceptId());
+        QuestionBank qb = questionService.generate(sel, taskContext(t));   // LLM，无事务
+        transactions.execute(tx -> {
+            DailyTask fresh = taskRepo.findById(taskId).orElse(null);
+            if (fresh != null && fresh.getQuestionId() == null
+                    && DailyTask.STATUS_PENDING.equals(fresh.getStatus())) {
+                fresh.setQuestionId(qb.getId());
+                fresh.setStatus(DailyTask.STATUS_READY);
+                taskRepo.save(fresh);
             }
+            return null;
         });
     }
 }

@@ -5,6 +5,7 @@ import interview.homegrown.common.exception.GlobalExceptionHandler;
 import interview.homegrown.modules.corpus.domain.Corpus;
 import interview.homegrown.modules.corpus.service.CorpusIndexer;
 import interview.homegrown.modules.corpus.service.CorpusLibraryService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
