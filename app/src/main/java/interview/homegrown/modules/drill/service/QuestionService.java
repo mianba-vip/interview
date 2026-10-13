@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.common.exception.BusinessException;
 import interview.homegrown.common.exception.ErrorCode;
 import interview.homegrown.modules.drill.ai.GeneratedQuestion;
+import interview.homegrown.modules.drill.ai.McqOption;
 import interview.homegrown.modules.drill.ai.QuestionGenerator;
 import interview.homegrown.modules.drill.domain.AnswerMode;
 import interview.homegrown.modules.drill.domain.ProbeType;
@@ -28,7 +29,9 @@ import java.util.Random;
  *   <li><b>软闸</b>：把历史题干注入 prompt，要求提问角度明显不同；</li>
  *   <li><b>兜底硬闸</b>：生成后算 trigram 相似度，超阈值就换 probe_type 重出，最多 3 次。</li>
  * </ol>
- * 前两闸管"大概率不重复"，第三闸管"模型抽风时也不会真的塞一道重复题进库"。
+ * 前两闸管"大概率不重复"；第三闸管"把重复压到很低"——注意它是<b>概率闸而非绝对闸</b>：
+ * 全部 {@link #MAX_ATTEMPTS} 次尝试都超阈值时，按 fail-safe 收下<b>相似度最低</b>的一版
+ * （宁出一道略像的题，也不让出题链路整体失败——那会让每日任务卡 PENDING、开题直接报错）。
  */
 @Service
 public class QuestionService {
@@ -37,8 +40,12 @@ public class QuestionService {
 
     /** 相似度超过它就判定为重复题 */
     private static final double DUP_THRESHOLD = 0.85;
-    /** 出题只调一次 LLM：推理模型每次要几十秒，重试代价太高；去重靠「优先未用 probe + 历史题干注入」 */
-    private static final int MAX_ATTEMPTS = 2;
+    /**
+     * 兜底闸重试上限（与类注释"最多 3 次"对齐）。推理模型每次要几十秒，不宜更多；
+     * 仍未逃出相似阈值时按 fail-safe 收下相似度最低的一版（见下方 acceptedBest 注释），
+     * 保证出题链路不被"必须全新"卡死（每日任务 PENDING / start 失败都比出一道略像的题更伤）。
+     */
+    private static final int MAX_ATTEMPTS = 3;
     private static final int HISTORY_LIMIT = 10;
 
     private final QuestionBankRepository qbRepo;
@@ -80,15 +87,17 @@ public class QuestionService {
                     .limit(HISTORY_LIMIT)
                     .forEach(history::add);
         }
-        ResponseFormat format = ResponseFormat.FREE_TEXT;   // MVP 主路径，CHOICE 走摸底链路
-
         List<ProbeType> tried = new ArrayList<>();
         GeneratedQuestion accepted = null;
         ProbeType acceptedProbe = null;
+        double acceptedBestSim = Double.MAX_VALUE;   // fail-safe 候选的相似度（越低越好）
 
         for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             ProbeType probe = pickProbeType(arity, usedProbes, tried);
             tried.add(probe);
+            // 作答形态按认知动作分流：识别/补全/对比/倒推/找 bug 出选择题（用户输入字母作答、判分免 LLM）；
+            // 场景设计与端到端设计保留文本作答。
+            ResponseFormat format = CHOICE_PROBES.contains(probe) ? ResponseFormat.CHOICE : ResponseFormat.FREE_TEXT;
 
             GeneratedQuestion gq = generator.generate(task, probe, format, history, referenceText);
             if (gq == null || gq.stem == null || gq.stem.isBlank()) {
@@ -98,6 +107,14 @@ public class QuestionService {
                         + "上一次输出缺少顶层 stem：JSON 顶层必须同时包含 stem（完整题干）、points、byConcept。";
                 continue;
             }
+            if (format == ResponseFormat.CHOICE && !validChoice(gq)) {
+                // 选择题结构坏（选项数/正确项/题干缺字母行）会把判分变成全 MISS——带错重试而非落库
+                log.warn("选择题结构不合法，带错重试 attempt={} probe={}", attempt + 1, probe);
+                referenceText = (referenceText == null ? "" : referenceText + "\n\n")
+                        + "上一次选择题结构不合法：options 必须恰好 4 项、key 为 A/B/C/D、有且只有 1 个 correct=true，"
+                        + "且 stem 内必须出现 A./B./C./D. 四个选项行（与 options 逐字一致）。";
+                continue;
+            }
             double sim = similarityGuard.maxSimilarity(gq.stem, history);
 
             if (sim <= DUP_THRESHOLD) {
@@ -105,10 +122,17 @@ public class QuestionService {
                 acceptedProbe = probe;
                 break;
             }
-            log.warn("出题重复度过高 sim={} concept={} probe={} attempt={}，换认知动作重出",
-                    String.format("%.3f", sim), primaryId, probe, attempt + 1);
-            accepted = gq;
-            acceptedProbe = probe;
+            // 兜底闸未过：记录"相似度最低"的一版作为 fail-safe 候选。全部尝试耗尽时
+            // 收下它（而不是最后一版）——旧实现 accepted 被 last-attempt 覆盖，可能把
+            // 更相似的一版收进库。这里明确 fail-safe 语义：宁可出一道略像的题，也不让
+            // 出题链路整体失败（每日任务会卡 PENDING、start 直接报错）。
+            if (accepted == null || sim < acceptedBestSim) {
+                accepted = gq;
+                acceptedProbe = probe;
+                acceptedBestSim = sim;
+            }
+            log.warn("出题重复度过高 sim={} concept={} probe={} attempt={}/{}，换认知动作重出",
+                    String.format("%.3f", sim), primaryId, probe, attempt + 1, MAX_ATTEMPTS);
             referenceText = (referenceText == null ? "" : referenceText + "\n\n")
                     + "上一版新题与历史题过于相似（相似度 " + String.format("%.2f", sim)
                     + "），本次必须更换实际场景、示例代码和核心问法，不得只改措辞。";
@@ -117,7 +141,31 @@ public class QuestionService {
         if (accepted == null || accepted.stem == null || accepted.stem.isBlank()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "出题失败：模型未返回有效题干，请重试");
         }
-        return persist(task, accepted, acceptedProbe, format);
+        ResponseFormat fmt = CHOICE_PROBES.contains(acceptedProbe) ? ResponseFormat.CHOICE : ResponseFormat.FREE_TEXT;
+        if (fmt == ResponseFormat.CHOICE && !validChoice(accepted)) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "选择题结构不合法，请重试");
+        }
+        return persist(task, accepted, acceptedProbe, fmt);
+    }
+
+    /**
+     * 出选择题的认知动作：概念识别/对比/倒推/找 bug——选项可客观判定；设计类保留文本作答。
+     * CLOZE 已在 {@link ProbeType} 的 DISABLED 集合停用（forArity 不会返回），故不出现在这里。
+     */
+    private static final java.util.Set<ProbeType> CHOICE_PROBES = java.util.Set.of(
+            ProbeType.RECALL, ProbeType.CONTRAST, ProbeType.REVERSE, ProbeType.TRAP);
+
+    /** 选择题结构硬校验：4 项、唯一正确、key 各异且题干内嵌对应选项行（不满足则带错重试）。 */
+    private static boolean validChoice(GeneratedQuestion gq) {
+        if (gq == null || gq.options == null || gq.options.size() != 4) return false;
+        if (gq.options.stream().filter(McqOption::correct).count() != 1) return false;
+        java.util.Set<String> keys = new java.util.HashSet<>();
+        for (McqOption o : gq.options) {
+            if (o.key() == null || o.text() == null || o.text().isBlank()) return false;
+            if (!keys.add(o.key())) return false;
+            if (!gq.stem.contains(o.key() + ".")) return false;
+        }
+        return true;
     }
 
     /**
@@ -150,6 +198,7 @@ public class QuestionService {
         qb.setArity(task.arity());
         qb.setStem(gq.stem);
         qb.setPointsJson(serialize(gq));
+        qb.setMcqOptionsJson(format == ResponseFormat.CHOICE && gq.options != null ? serialize(gq.options) : null);
         return qbRepo.save(qb);
     }
 

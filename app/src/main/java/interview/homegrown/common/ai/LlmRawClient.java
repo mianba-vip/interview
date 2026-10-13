@@ -241,39 +241,34 @@ public class LlmRawClient {
             notifyError(onError, new IllegalStateException("尚未配置 API Key，请到「设置」页填写后再试"));
             return;
         }
-        AiConfig current = cfg();
-        AiTelemetry.Call call = telemetry.start(current.provider(), current.model(), "stream");
-        boolean success = false;
-        try {
-            boolean thinking = enableThinking;
-            for (int attempt = 0; attempt < 2; attempt++) {
-                try {
-                    Map<String, Object> body = buildStreamBody(system, user, images, thinking);
-                    HttpResponse<InputStream> response = sendStreamWithRetry(body, onError);
-                    if (response == null) return;
-                    if (response.statusCode() / 100 != 2) {
-                        response.body().close();
-                        notifyError(onError, new BusinessException(ErrorCode.SERVICE_UNAVAILABLE,
-                                "LLM stream HTTP " + response.statusCode()));
-                        return;
-                    }
-                    boolean thinkingTimeout = readStreamLoop(response, onToken, onError,
-                            fallbackToReasoning, onReasoning, call);
-                    if (!thinkingTimeout) {
-                        success = true;
-                        return;
-                    }
-                    log.info("思考超过 {}s，降级为非思考模式重试", MAX_THINKING_SECONDS);
-                    telemetry.retry("thinking_timeout");
-                    thinking = false;
-                } catch (Exception t) {
-                    if (t instanceof InterruptedException) Thread.currentThread().interrupt();
-                    notifyError(onError, t);
+        boolean thinking = enableThinking;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                Map<String, Object> body = buildStreamBody(system, user, images, thinking);
+                HttpResponse<InputStream> response = sendStreamWithRetry(body, onError);
+                if (response == null) return;
+                if (response.statusCode() / 100 != 2) {
+                    response.body().close();
+                    notifyError(onError, new BusinessException(ErrorCode.SERVICE_UNAVAILABLE,
+                            "LLM stream HTTP " + response.statusCode()));
                     return;
                 }
+                long waitMs = thinking ? THINK_RETRY_MS : NO_THINK_MAX_WAIT_MS;
+                boolean thinkingTimeout = readStreamLoop(response, onToken, onError, fallbackToReasoning, onReasoning, waitMs);
+                if (!thinkingTimeout) return;
+                if (!thinking) {
+                    // 非思考流等待仍超时（部分 provider 关不掉思考，如小米 MiMo）：
+                    // 重发完全相同的请求毫无意义——按失败结束，调用方给出可重试提示
+                    log.info("非思考模式 {}s 无正文，放弃本次生成", waitMs / 1000);
+                    return;
+                }
+                log.info("思考超过 {}s，降级为非思考模式重试", waitMs / 1000);
+                thinking = false;
+            } catch (Exception t) {
+                if (t instanceof InterruptedException) Thread.currentThread().interrupt();
+                notifyError(onError, t);
+                return;
             }
-        } finally {
-            call.finish(success);
         }
     }
 
@@ -309,11 +304,11 @@ public class LlmRawClient {
         return body;
     }
 
-    /** 读取 SSE 流并分发 token。返回 true 表示思考超时需要降级重试。 */
+    /** 读取 SSE 流并分发 token。返回 true 表示「无正文」超时（调用方决定降级或放弃）。 */
     private boolean readStreamLoop(HttpResponse<InputStream> response,
                                    Consumer<String> onToken, Consumer<Throwable> onError,
                                    boolean fallbackToReasoning, Consumer<String> onReasoning,
-                                   AiTelemetry.Call call) throws Exception {
+                                   long noContentTimeoutMs) throws Exception {
         long firstTokenAt = -1;
         boolean hasContent = false;
         try (BufferedReader reader = new BufferedReader(
@@ -335,9 +330,11 @@ public class LlmRawClient {
                     String reasoning = firstReasoningToken(delta);
                     if (reasoning == null) reasoning = firstReasoningToken(choice);
                     if (reasoning == null) reasoning = firstReasoningToken(choice.path("message"));
-                    if (reasoning != null && !reasoning.isEmpty() && onReasoning != null) {
+                    if (reasoning != null && !reasoning.isEmpty()) {
+                        // 思考计时必须独立于 onReasoning 是否为空：否则调用方不关心思考内容时
+                        // （传 null）30s 保护一并失效，思考会无上限地阻塞正文下发
                         if (firstTokenAt < 0) firstTokenAt = System.currentTimeMillis();
-                        onReasoning.accept(reasoning);
+                        if (onReasoning != null) onReasoning.accept(reasoning);
                     }
                     String text = streamText(delta.path("content"));
                     if (text == null && fallbackToReasoning) text = reasoning;
@@ -347,7 +344,7 @@ public class LlmRawClient {
                         if (onToken != null) onToken.accept(text);
                     }
                     if (!hasContent && firstTokenAt > 0
-                            && System.currentTimeMillis() - firstTokenAt > MAX_THINKING_SECONDS * 1000L) {
+                            && System.currentTimeMillis() - firstTokenAt > noContentTimeoutMs) {
                         return true;
                     }
                 } catch (JsonProcessingException e) {
@@ -433,8 +430,13 @@ public class LlmRawClient {
      *  用户可在「设置 → 思考强度」改为 medium/high/auto。 */
     private static final String STREAM_REASONING_EFFORT = "low";
 
-    /** 思考超时（秒）：流式讲解/问答时，若模型思考超过该时长仍未输出正文，降级为非思考模式重试。 */
-    private static final int MAX_THINKING_SECONDS = 30;
+    /** 思考中流（未降级）：30s 无正文 → 降级为非思考模式重试（对能关思考的 provider 有效）。 */
+    private static final long THINK_RETRY_MS = 30_000L;
+
+    /** 非思考流（讲解正文等）：部分 provider 关不掉思考（小米 MiMo 实测所有关思考参数
+     *  均被忽略），降级重试完全无效——给足等待让模型想完自然输出（思考过程已流式
+     *  展示给用户，并非无反馈空等），而不是 30s 就掐死报「生成失败」。 */
+    private static final long NO_THINK_MAX_WAIT_MS = 120_000L;
 
     private String modelLower() {
         return cfg().model() == null ? "" : cfg().model().toLowerCase();

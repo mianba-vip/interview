@@ -473,3 +473,5 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .reveal { opacity: 1; transform: none; }
 }
+
+.os-icon.android { color: #fff; background: #3ddc84; }

@@ -93,6 +93,11 @@ springdoc:
   packages-to-scan: interview.homegrown.modules
 
 app:
+  # 本地文件系统导入（corpus from-path / project import-path）是否允许非回环调用。
+  # 这两个端点只对桌面本地模式有意义（后端跑在用户自己机器上）；公网部署保持 false，
+  # 否则任意登录用户都能让服务器读取任意目录。默认 false = 仅 127.0.0.1/::1 可调用。
+  local-fs:
+    allow-remote: ${APP_LOCAL_FS_ALLOW_REMOTE:false}
   storage:
     mode: ${APP_STORAGE_MODE:local}
     local-dir: ${APP_STORAGE_LOCAL_DIR:./data/files}

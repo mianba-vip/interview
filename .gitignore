@@ -41,6 +41,12 @@ out/
 ### Project ###
 .env
 
+### Node（依赖一律不入库；各包自己的 package.json/lock 入库） ###
+node_modules/
+
+### 个人笔记/临时产物（本地保留，不入库） ###
+tmp/
+
 ### 自包含后端运行时 / 本地数据库 ###
 runtime/
 runtime-win/
