@@ -2,6 +2,8 @@ package interview.homegrown.modules.corpus.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.common.ai.StructuredOutputInvoker;
+import interview.homegrown.common.async.DurableJobQueue;
+import interview.homegrown.common.async.DurableJobType;
 import interview.homegrown.modules.corpus.domain.Corpus;
 import interview.homegrown.modules.corpus.domain.CorpusChunk;
 import interview.homegrown.modules.corpus.repository.CorpusChunkRepository;

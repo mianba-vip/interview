@@ -1,5 +1,7 @@
 package interview.homegrown.modules.studyplan.service;
 
+import interview.homegrown.common.async.DurableJobQueue;
+import interview.homegrown.common.async.DurableJobType;
 import interview.homegrown.modules.drill.domain.Concept;
 import interview.homegrown.modules.drill.domain.Mastery;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
@@ -20,7 +22,9 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -31,8 +35,8 @@ import static org.mockito.Mockito.when;
  * ensureToday 的事务时序缺陷修复验证：
  * 1) saveAll 撞唯一约束（并发重复生成）时，catch 兜底真正生效——重新读回已有任务并
  *    继续（旧实现因外层事务被标记 rollback-only，方法收尾必抛 UnexpectedRollbackException）；
- * 2) PENDING 任务在恢复路径同样会被调度预生成；
- * 3) 同一任务不重复调度（在途防重）。
+ * 2) PENDING 任务在恢复路径同样会被调度预生成（入队持久异步队列）；
+ * 3) 只有 PENDING 且未出题的任务入队（重复入队的防重由队列幂等键 ON CONFLICT 保证）。
  */
 class DailyPlanEnsureTodayTest {
 
@@ -41,10 +45,11 @@ class DailyPlanEnsureTodayTest {
     private final ConceptRepository conceptRepo = mock(ConceptRepository.class);
     private final MasteryRepository masteryRepo = mock(MasteryRepository.class);
     private final QuestionBankRepository qbRepo = mock(QuestionBankRepository.class);
+    private final DurableJobQueue jobs = mock(DurableJobQueue.class);
 
     private DailyPlanService service() {
         return new DailyPlanService(taskRepo, planRepo, conceptRepo, masteryRepo,
-                qbRepo, null, null, null, null, null, null);
+                qbRepo, null, null, null, null, null, null, jobs, null);
     }
 
     private StudyPlan plan(long id) {
@@ -75,8 +80,8 @@ class DailyPlanEnsureTodayTest {
         c.setId(11L);
         c.setLayer(1);
         when(conceptRepo.findByStudyPlanId(1L)).thenReturn(List.of(c));
-        when(conceptRepo.findAllById(anyList())).thenReturn(List.of(c));
-        when(planRepo.findAllById(anyList())).thenReturn(List.of(plan(1L)));
+        when(conceptRepo.findAllById(any())).thenReturn(List.of(c));
+        when(planRepo.findAllById(any())).thenReturn(List.of(plan(1L)));
 
         // 第一次查询：今天没任务 → 生成新任务 → saveAll 撞唯一约束（并发请求已插入）
         var concurrentExisting = List.of(pendingTask(99L, 1L, 11L));
@@ -91,31 +96,38 @@ class DailyPlanEnsureTodayTest {
         assertThat(tasks).hasSize(1);
         assertThat(tasks.get(0).getId()).isEqualTo(99L);
         // 冲突后读回的 PENDING 任务也被调度预生成（不等下一次 ensureToday）
+        verify(jobs, times(1)).enqueue(DurableJobType.DAILY_QUESTION, 99L, 7L, false, false);
         verify(taskRepo, times(1)).saveAll(anyList());
     }
 
     @Test
-    @DisplayName("在途防重：同一 taskId 不会重复提交预生成")
-    void inFlightGuardPreventsDuplicateSubmission() throws Exception {
-        DailyPlanService svc = service();
-        // 通过反射调用 private generateAsync 验证防重（generating 集合挡第二次提交）
-        java.lang.reflect.Method m = DailyPlanService.class.getDeclaredMethod("generateAsync", Long.class);
-        m.setAccessible(true);
-        // 第一次提交进线程池（依赖为 null，任务里会 NPE 但被 catch 记 warn，不影响断言）
-        m.invoke(svc, 5L);
-        // 立刻抢占：把 5L 放回在途集合再调用，应被挡（模拟前一任务尚未跑完的窗口）
-        java.lang.reflect.Field f = DailyPlanService.class.getDeclaredField("generating");
-        f.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        java.util.Set<Long> generating = (java.util.Set<Long>) f.get(svc);
-        generating.add(5L);
-        m.invoke(svc, 5L);
-        // 防重生效：generating 中 5L 仍在（第二次调用没走 submit 也就没有 finally 移除）
-        // 等待线程池里的首个任务结束（它自己的 finally 会移除 5L）
-        Thread.sleep(300);
-        // 无法从外部窥探 pool；核心断言是不抛异常且第二次调用是幂等的
-        assertThatCode(() -> m.invoke(svc, 5L)).doesNotThrowAnyException();
-        // 静默验证 save 未被调用（依赖均为 null，任何真实执行都不会写库）
+    @DisplayName("入队调度：仅 PENDING 且未出题的任务入队，DONE/已出题不入队")
+    void schedulesOnlyPendingWithoutQuestion() {
+        when(planRepo.findByUserId(7L)).thenReturn(List.of(plan(1L)));
+        when(masteryRepo.findByUserId(7L)).thenReturn(List.of());
+        when(conceptRepo.findByStudyPlanId(1L)).thenReturn(List.of());   // 无新概念 → 不新建任务
+        Concept c = new Concept();
+        c.setId(11L);
+        c.setLayer(1);
+        when(conceptRepo.findAllById(any())).thenReturn(List.of(c)); // 概念存在 → 不判孤儿
+        when(planRepo.findAllById(any())).thenReturn(List.of(plan(1L)));
+
+        DailyTask pending = pendingTask(5L, 1L, 11L);
+        DailyTask done = pendingTask(6L, 1L, 11L);
+        done.setStatus("DONE");
+        DailyTask ready = pendingTask(7L, 1L, 11L);
+        ready.setQuestionId(88L);
+        ready.setStatus("READY");
+        when(taskRepo.findByUserIdAndTaskDate(any(), any(LocalDate.class)))
+                .thenReturn(List.of(pending, done, ready));
+
+        service().ensureToday(7L);
+
+        // 防重语义：服务侧只负责「PENDING 且未出题才入队」；同一任务重复入队由
+        // 队列的幂等键（ON CONFLICT DO NOTHING）挡住，不再需要内存里的在途集合
+        verify(jobs, times(1)).enqueue(DurableJobType.DAILY_QUESTION, 5L, 7L, false, false);
+        verify(jobs, never()).enqueue(eq(DurableJobType.DAILY_QUESTION), eq(6L), any(), anyBoolean(), anyBoolean());
+        verify(jobs, never()).enqueue(eq(DurableJobType.DAILY_QUESTION), eq(7L), any(), anyBoolean(), anyBoolean());
         verify(taskRepo, never()).save(any());
     }
 }
