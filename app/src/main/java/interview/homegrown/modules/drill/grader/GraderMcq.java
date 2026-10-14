@@ -29,6 +29,10 @@ public class GraderMcq implements Grader {
 
     @Override
     public GraderOutput grade(Long runId, QuestionBank q, String rawAnswer, boolean timed) {
+        // 判断题（B3）：中文作答习惯「对/错」而非字母——先归一成 A/B 再走统一比对
+        if (q.getResponseFormat() == interview.homegrown.modules.drill.domain.ResponseFormat.JUDGE) {
+            rawAnswer = normalizeJudgeAnswer(rawAnswer);
+        }
         List<McqOption> opts = parseOptions(q.getMcqOptionsJson());
         Set<String> validKeys = new HashSet<>();
         for (McqOption o : opts) {
@@ -103,6 +107,18 @@ public class GraderMcq implements Grader {
     /** "B" / "B." / "选B" / "答案:B" / "AC" 这类纯选择 token（前缀可有"答案/选"，尾部可带标点）。 */
     private static final java.util.regex.Pattern KEY_TOKEN =
             java.util.regex.Pattern.compile("^(?:答案|ANSWER|选|OPT(?:ION)?)?[:：.。\\s]*([A-Z]+)[.。,，:：\\s]*$");
+
+    /**
+     * 判断题作答归一：整段是「对/正确/是/√/T/TRUE」→ "A"（正确项约定 key=A），
+     * 「错/错误/否/×/F/FALSE」→ "B"。带解释的长文本不动（交给 matchByText 或视为叙述）。
+     */
+    static String normalizeJudgeAnswer(String raw) {
+        if (raw == null) return null;
+        String t = raw.trim();
+        if (t.matches("(?i)^(?:答案|选|判断)?[:：.。\\s]*(对|正确|是|√|T|TRUE|A)[.。,，:：\\s!！]*$")) return "A";
+        if (t.matches("(?i)^(?:答案|选|判断)?[:：.。\\s]*(错|错误|否|×|F|FALSE|B)[.。,，:：\\s!！]*$")) return "B";
+        return raw;
+    }
 
     /** 用户直接粘贴/输入了选项原文：整段包含该选项文本（≥2 字）也视为选中。 */
     private boolean matchByText(String raw, McqOption o) {
