@@ -134,6 +134,54 @@ public class DrillController {
         return view;
     }
 
+    /**
+     * 流式出题（SSE）：与 {@link #start} 完全同一套闸门/恢复/出题逻辑，只换传输形态——
+     * 立即下发 event:start 占住网关连接（EdgeOne 回源首包超时很短，阻塞式 /start 全程
+     * 零字节会被网关 522 掐断），出题各阶段经 event:status 透出（前端展示"正在生成…"），
+     * 题目就绪后 event:done 携带完整 QuestionView（与前端 openSse 的 onDoneView 契约一致）。
+     */
+    @PostMapping(value = "/start/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<SseEmitter> startStream(@RequestBody StartRequest req) {
+        Long uid = CurrentUser.id();
+        return SseStream.start(sink -> {
+            sink.start();
+            try {
+                var task = selectionService.pickFor(uid, req.conceptId());
+                QuestionView view = support.openRun(uid, task, support.planIdOfConcept(req.conceptId()),
+                        null, req.conceptId(), req.subPoint(),
+                        text -> sink.event("status", statusJson(text)));
+                support.tagRun(view.runId(),
+                        req.subPoint() == null ? DrillPurpose.FREE_PRACTICE : DrillPurpose.SUB_POINT_PRACTICE,
+                        support.planIdOfConcept(req.conceptId()), req.conceptId(), null);
+                sink.event("done", objectMapper.writeValueAsString(view));
+            } catch (ResponseStatusException e) {
+                // 业务异常在流内以 error 帧返回并附带 HTTP 状态码，前端据此区分闸门 409 等；
+                // 不抛给 SseStream 统一兜底——那里只带 message，会丢掉状态码语义
+                sink.event("error", errorJson(e.getStatusCode().value(),
+                        e.getReason() == null ? "请求失败" : e.getReason()));
+            } catch (interview.homegrown.common.exception.BusinessException e) {
+                sink.event("error", errorJson(500, e.getMessage()));
+            }
+        });
+    }
+
+    private String statusJson(String text) {
+        try {
+            return objectMapper.writeValueAsString(Map.of("text", text == null ? "" : text));
+        } catch (Exception e) {
+            return "{\"text\":\"\"}";
+        }
+    }
+
+    private String errorJson(int status, String message) {
+        try {
+            return objectMapper.writeValueAsString(Map.of("status", status,
+                    "message", message == null ? "服务器内部错误" : message));
+        } catch (Exception e) {
+            return "{\"message\":\"服务器内部错误\"}";
+        }
+    }
+
     /** 方向级入口：继续（plan 内确定性选题）/ 复习（plan 内到期已掌握项）/ 层级练习（指定 layer）。 */
     @PostMapping("/start-plan")
     public QuestionView startPlan(@RequestBody StartPlanRequest req) {
