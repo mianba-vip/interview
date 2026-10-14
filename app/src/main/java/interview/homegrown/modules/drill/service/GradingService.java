@@ -281,12 +281,38 @@ public class GradingService {
         GradeResult gr = gradeRepo.findFirstByRunIdOrderByIdDesc(runId).orElse(null);
         if (gr == null) {
             // 理论上已 GRADED 必已落 GradeResult；兜底给出 AGAIN，避免空指针
-            return new GradeView(runId, run.getQuestionId(), 0, Grade.AGAIN.name(), "[]");
+            return new GradeView(runId, run.getQuestionId(), 0, Grade.AGAIN.name(), "[]", null);
         }
         double rawScore = gr.getRawScore() == null ? 0 : gr.getRawScore().doubleValue();
         String grade = run.getFinalGrade() != null ? run.getFinalGrade() : gr.getGrade().name();
         String byConcept = gr.getByConceptJson() == null ? "[]" : gr.getByConceptJson();
-        return new GradeView(runId, run.getQuestionId(), rawScore, grade, byConcept);
+        return new GradeView(runId, run.getQuestionId(), rawScore, grade, byConcept, mcqCorrectOf(gr.getQuestionId()));
+    }
+
+    /**
+     * 选择题正确项字母（如 "AC"），仅随判分结果下发（B2：判分后选项级对照）。
+     * 非选择题 / 解析失败返回 null。绝不随题目元数据提前下发——判分前泄露正确项等于送分。
+     */
+    private String mcqCorrectOf(QuestionBank q) {
+        if (q == null || q.getResponseFormat() != ResponseFormat.CHOICE
+                || q.getMcqOptionsJson() == null || q.getMcqOptionsJson().isBlank()) {
+            return null;
+        }
+        try {
+            interview.homegrown.modules.drill.ai.McqOption[] opts =
+                    objectMapper.readValue(q.getMcqOptionsJson(), interview.homegrown.modules.drill.ai.McqOption[].class);
+            StringBuilder sb = new StringBuilder();
+            for (var o : opts) {
+                if (o.correct() && o.key() != null) sb.append(o.key());
+            }
+            return sb.isEmpty() ? null : sb.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String mcqCorrectOf(Long questionId) {
+        return questionId == null ? null : mcqCorrectOf(qbRepo.findById(questionId).orElse(null));
     }
 
     /**
@@ -345,7 +371,7 @@ public class GradingService {
         applyMastery(userId, scores, run.getMode(), timed,
                 true, run.getGuideRounds(), run.isRevealed());
 
-        return new GradeView(runId, q.getId(), rawScore, Grade.GOOD.name(), "[]");
+        return new GradeView(runId, q.getId(), rawScore, Grade.GOOD.name(), "[]", mcqCorrectOf(q));
     }
 
     /** 把整段对话拼成「老师问 / 学生答」实录，供判分器判断哪些评分点被实际考到 */
@@ -439,7 +465,7 @@ public class GradingService {
 
         return new GradeView(run.getId(), q.getId(),
                 out.rawScore() == null ? 0 : out.rawScore().doubleValue(),
-                out.grade().name(), out.byConceptJson());
+                out.grade().name(), out.byConceptJson(), mcqCorrectOf(q));
     }
 
     /** per concept 更新掌握度与下次复习时间（练习主流程：lean 用苏格拉底评分字段算动态到期） */
