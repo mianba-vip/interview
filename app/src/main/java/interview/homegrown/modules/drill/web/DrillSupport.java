@@ -71,11 +71,28 @@ public class DrillSupport {
 
     QuestionView openRun(Long uid, SelectedTask task, Long targetPlanId,
                          Integer targetLayer, Long targetConceptId, String focus) {
+        return openRun(uid, task, targetPlanId, targetLayer, targetConceptId, focus, null);
+    }
+
+    /**
+     * 带进度回调的 {@link #openRun}：出题各阶段经 onStatus 透出（流式端点转发给前端，
+     * 把「干等 10~60 秒」变成看得见的进度）。回调可为 null，行为与 6 参版本完全一致。
+     */
+    QuestionView openRun(Long uid, SelectedTask task, Long targetPlanId,
+                         Integer targetLayer, Long targetConceptId, String focus,
+                         java.util.function.Consumer<String> onStatus) {
+        java.util.function.Consumer<String> status = onStatus == null ? s -> { } : onStatus;
         QuestionView resumed = resumeActiveOrPark(uid, targetPlanId, targetLayer, targetConceptId);
         if (resumed != null) {
-            if (focus == null || focus.isBlank()) return resumed;
+            if (focus == null || focus.isBlank()) {
+                status.accept("检测到未完成的作答，已恢复上次的题目");
+                return resumed;
+            }
             DrillRun active = runRepo.findById(resumed.runId()).orElse(null);
-            if (active != null && focus.equals(active.getFocusSubPoint())) return resumed;
+            if (active != null && focus.equals(active.getFocusSubPoint())) {
+                status.accept("检测到未完成的作答，已恢复上次的题目");
+                return resumed;
+            }
             // 同一大知识点下切换到另一个子知识点时，不能恢复上一子点的题。
             if (active != null) {
                 active.setStatus(DrillRunStatus.PARKED);
@@ -83,6 +100,7 @@ public class DrillSupport {
             }
         }
 
+        status.accept("正在组装出题上下文（学习进度 / 资料要点 / 历史练习）");
         // 学习上下文注入：学生进度 + 概念要点 + 用户资料块 + 互联网补充（素材不锁死）
         String context = progressContext.contextFor(uid, task.conceptIds());
         // 先教后考：出题限定到「子知识点」粒度，题目必须围绕当前子知识点，不跑偏到别的子点。
@@ -107,6 +125,7 @@ public class DrillSupport {
                         + "对已经正确回答的内容换认知动作或应用场景，对暴露出的薄弱处做针对性考察。";
             }
         }
+        status.accept("正在生成题目，模型写作中（首次约需 10–60 秒，请稍候）");
         var q = questionService.generate(task, withSkillContext(uid, context), practicedStems);       // 出题（LLM 填空）
         return openRunOnQuestion(uid, q.getId(), targetPlanId, focus);
     }
