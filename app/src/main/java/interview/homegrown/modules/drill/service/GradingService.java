@@ -102,7 +102,7 @@ public class GradingService {
 
         Grader grader = switch (q.getResponseFormat()) {
             case FREE_TEXT, STRUCTURED -> graderText;
-            case CHOICE -> graderMcq;
+            case CHOICE, MULTI, JUDGE -> graderMcq;
             case CODE -> throw new ResponseStatusException(NOT_IMPLEMENTED, "CODE 待接力扣判题");
         };
         Grader.GraderOutput out = grader.grade(runId, q, rawAnswer, timed);   // LLM（FREE_TEXT），无事务
@@ -195,13 +195,18 @@ public class GradingService {
         if (rawAnswer == null || rawAnswer.isBlank()) {
             throw new ResponseStatusException(BAD_REQUEST, "用户尚未作答，无法评分");
         }
-        // 选择题：评分依据取「最后一次明确给出的选项字母」——答对之后补充的闲聊/解释
-        // 不能把答案顶掉（否则 GraderMcq 会按最后一条非字母文本判成部分分）。
-        if (q.getResponseFormat() == ResponseFormat.CHOICE) {
+        // 客观题（单选/多选/判断）：评分依据取「最后一次明确给出的选项字母」——答对之后补充的
+        // 闲聊/解释不能把答案顶掉（否则 GraderMcq 会按最后一条非字母文本判成部分分）。
+        // 判断题额外接受「对/错」中文作答（GraderMcq 内部归一为 A/B）。
+        boolean objective = q.getResponseFormat() == ResponseFormat.CHOICE
+                || q.getResponseFormat() == ResponseFormat.MULTI
+                || q.getResponseFormat() == ResponseFormat.JUDGE;
+        if (objective) {
+            boolean judge = q.getResponseFormat() == ResponseFormat.JUDGE;
             String letterAns = gradeTurns.stream()
                     .map(DrillTurn::getRawAnswer)
                     .filter(s -> s != null && !s.isBlank())
-                    .filter(GradingService::looksLikeChoiceAnswer)
+                    .filter(s -> looksLikeChoiceAnswer(s) || (judge && looksLikeJudgeAnswer(s)))
                     .reduce((a, b) -> b)
                     .orElse(null);
             if (letterAns != null) {
@@ -223,7 +228,7 @@ public class GradingService {
         if (q.getResponseFormat() == ResponseFormat.FREE_TEXT
                 || q.getResponseFormat() == ResponseFormat.STRUCTURED) {
             out = graderText.gradeWithConversation(runId, q, rawAnswer, timed, conversation);
-        } else if (q.getResponseFormat() == ResponseFormat.CHOICE) {
+        } else if (objective) {
             Grader.GraderOutput mcqOut = graderMcq.grade(runId, q, rawAnswer, timed);
             // 选对：客观精确判分直接满分（GraderMcq 全中 = 100）；
             // 选错：不再按固定比例扣分，改走与开放题同一套 LLM 判分——按与 AI 的引导交互表现给分。
@@ -272,6 +277,12 @@ public class GradingService {
                 .find();
     }
 
+    /** 判断题作答识别：整段是「对/正确/是/√/错/错误/否/×」这类明确判断（B3）。 */
+    private static boolean looksLikeJudgeAnswer(String s) {
+        return s != null && s.trim()
+                .matches("(?i)^(?:答案|选|判断)?[:：.。\\s]*(对|正确|是|√|T|TRUE|错|错误|否|×|F|FALSE)[.。,，:：\\s!！]*$");
+    }
+
     /**
      * 已评分 run 的幂等返回：从最新落库的 GradeResult 重建 GradeView。
      * 供 finish 重复提交（双击「结束并评分」等）复用，避免「已评分但前端仍在评分按钮」的状态错乱。
@@ -294,8 +305,13 @@ public class GradingService {
      * 非选择题 / 解析失败返回 null。绝不随题目元数据提前下发——判分前泄露正确项等于送分。
      */
     private String mcqCorrectOf(QuestionBank q) {
-        if (q == null || q.getResponseFormat() != ResponseFormat.CHOICE
-                || q.getMcqOptionsJson() == null || q.getMcqOptionsJson().isBlank()) {
+        if (q == null
+                || (q.getResponseFormat() != ResponseFormat.CHOICE
+                    && q.getResponseFormat() != ResponseFormat.MULTI
+                    && q.getResponseFormat() != ResponseFormat.JUDGE)) {
+            return null;
+        }
+        if (q.getMcqOptionsJson() == null || q.getMcqOptionsJson().isBlank()) {
             return null;
         }
         try {

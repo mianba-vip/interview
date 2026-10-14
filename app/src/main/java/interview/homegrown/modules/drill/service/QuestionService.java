@@ -106,9 +106,10 @@ public class QuestionService {
         for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             ProbeType probe = pickProbeType(arity, usedProbes, tried);
             tried.add(probe);
-            // 作答形态按认知动作分流：识别/补全/对比/倒推/找 bug 出选择题（用户输入字母作答、判分免 LLM）；
-            // 场景设计与端到端设计保留文本作答。
-            ResponseFormat format = CHOICE_PROBES.contains(probe) ? ResponseFormat.CHOICE : ResponseFormat.FREE_TEXT;
+            // 作答形态按认知动作分流（B3 扩展）：TRAP 单点 → 判断题（一个说法判真伪，天然适配埋坑）；
+            // CONTRAST → 多选（对比辨析选出所有成立的说法）；RECALL/REVERSE/TRAP(组合) → 单选；
+            // SCENARIO/INTEGRATION 保留文本作答。
+            ResponseFormat format = formatFor(probe, arity);
 
             progress.accept("第 " + (attempt + 1) + "/" + MAX_ATTEMPTS + " 次生成（考法：" + probe.label() + "）");
             GeneratedQuestion gq = generator.generate(task, probe, format, history, referenceText);
@@ -120,13 +121,13 @@ public class QuestionService {
                         + "上一次输出缺少顶层 stem：JSON 顶层必须同时包含 stem（完整题干）、points、byConcept。";
                 continue;
             }
-            if (format == ResponseFormat.CHOICE && !validChoice(gq)) {
-                // 选择题结构坏（选项数/正确项/题干缺字母行）会把判分变成全 MISS——带错重试而非落库
-                log.warn("选择题结构不合法，带错重试 attempt={} probe={}", attempt + 1, probe);
-                progress.accept("选择题结构不合法，携带错误自动重试");
+            if (isObjective(format) && !validObjective(gq, format)) {
+                // 客观题结构坏（选项数/正确项数/题干缺字母行）会把判分变成全 MISS——带错重试而非落库
+                log.warn("客观题结构不合法（{}），带错重试 attempt={} probe={}", format, attempt + 1, probe);
+                progress.accept("题目结构不合法，携带错误自动重试");
                 referenceText = (referenceText == null ? "" : referenceText + "\n\n")
-                        + "上一次选择题结构不合法：options 必须恰好 4 项、key 为 A/B/C/D、有且只有 1 个 correct=true，"
-                        + "且 stem 内必须出现 A./B./C./D. 四个选项行（与 options 逐字一致）。";
+                        + "上一次" + formatSpec(format) + "结构不合法：" + validSpec(format)
+                        + "，且 stem 内必须出现与 options 逐字一致的选项行。";
                 continue;
             }
             double sim = similarityGuard.maxSimilarity(gq.stem, history);
@@ -160,11 +161,39 @@ public class QuestionService {
         if (acceptedBestSim != Double.MAX_VALUE) {
             progress.accept("多次生成仍与历史题偏相似，已采用最不相似的一版（宁可略像，不卡做题）");
         }
-        ResponseFormat fmt = CHOICE_PROBES.contains(acceptedProbe) ? ResponseFormat.CHOICE : ResponseFormat.FREE_TEXT;
-        if (fmt == ResponseFormat.CHOICE && !validChoice(accepted)) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "选择题结构不合法，请重试");
+        ResponseFormat fmt = formatFor(acceptedProbe, arity);
+        if (isObjective(fmt) && !validObjective(accepted, fmt)) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "题目结构不合法，请重试");
         }
         return persist(task, accepted, acceptedProbe, fmt);
+    }
+
+    /** 认知动作 + arity → 作答形态（B3 扩展：判断题/多选）。确定性映射，不进 prompt。 */
+    private static ResponseFormat formatFor(ProbeType probe, int arity) {
+        if (probe == ProbeType.TRAP && arity == 1) return ResponseFormat.JUDGE;
+        if (probe == ProbeType.CONTRAST) return ResponseFormat.MULTI;
+        return CHOICE_PROBES.contains(probe) ? ResponseFormat.CHOICE : ResponseFormat.FREE_TEXT;
+    }
+
+    private static boolean isObjective(ResponseFormat format) {
+        return format == ResponseFormat.CHOICE || format == ResponseFormat.MULTI || format == ResponseFormat.JUDGE;
+    }
+
+    /** 客观题的格式说明（带错重试时注入 prompt / 前端报错用）。 */
+    private static String formatSpec(ResponseFormat format) {
+        return switch (format) {
+            case JUDGE -> "判断题";
+            case MULTI -> "多选题";
+            default -> "选择题";
+        };
+    }
+
+    private static String validSpec(ResponseFormat format) {
+        return switch (format) {
+            case JUDGE -> "options 必须恰好 2 项（A. 正确／B. 错误）、有且只有 1 个 correct=true";
+            case MULTI -> "options 必须恰好 4 项、key 为 A/B/C/D、恰好 2 个 correct=true";
+            default -> "options 必须恰好 4 项、key 为 A/B/C/D、有且只有 1 个 correct=true";
+        };
     }
 
     /**
@@ -174,10 +203,12 @@ public class QuestionService {
     private static final java.util.Set<ProbeType> CHOICE_PROBES = java.util.Set.of(
             ProbeType.RECALL, ProbeType.CONTRAST, ProbeType.REVERSE, ProbeType.TRAP);
 
-    /** 选择题结构硬校验：4 项、唯一正确、key 各异且题干内嵌对应选项行（不满足则带错重试）。 */
-    private static boolean validChoice(GeneratedQuestion gq) {
-        if (gq == null || gq.options == null || gq.options.size() != 4) return false;
-        if (gq.options.stream().filter(McqOption::correct).count() != 1) return false;
+    /** 客观题结构硬校验（B3 泛化）：选项数/正确项数按形态约定，key 各异且题干内嵌对应选项行。 */
+    private static boolean validObjective(GeneratedQuestion gq, ResponseFormat format) {
+        int expectSize = format == ResponseFormat.JUDGE ? 2 : 4;
+        long expectCorrect = format == ResponseFormat.MULTI ? 2 : 1;
+        if (gq == null || gq.options == null || gq.options.size() != expectSize) return false;
+        if (gq.options.stream().filter(McqOption::correct).count() != expectCorrect) return false;
         java.util.Set<String> keys = new java.util.HashSet<>();
         for (McqOption o : gq.options) {
             if (o.key() == null || o.text() == null || o.text().isBlank()) return false;

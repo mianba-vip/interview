@@ -55,6 +55,50 @@ public class QuestionGenerator {
                 实际输出不要用 Markdown 围栏包裹整个 JSON，不要输出结构以外的任何文字。
                 """;
 
+    /** 多选题作答（B3）：同一题干选出所有成立的说法，字母组合作答（如 AC）。 */
+    private static final String MULTI_FORMAT_SPEC = """
+                【JSON 格式 · 多选题】
+                结构必须是（stem 顶层唯一，落库依赖；options 供判分）：
+                ```json
+                {
+                  "stem": "…（题干先声明【多选】；另起四行写 A. …／B. …／C. …／D. … 四个选项，并附一句：请回复所有正确选项的字母组合，如 AC）",
+                  "points": [{"text": "评分维度短语", "weight": 2}],
+                  "options": [
+                    {"key": "A", "text": "选项文本", "correct": true},
+                    {"key": "B", "text": "选项文本", "correct": false},
+                    {"key": "C", "text": "选项文本", "correct": true},
+                    {"key": "D", "text": "选项文本", "correct": false}
+                  ],
+                  "byConcept": [{"conceptIndex": 1, "points": [{"text": "评分维度短语", "weight": 2}]}]
+                }
+                ```
+                - 恰好 4 个 options、恰好 2 个 correct=true、key 为 A/B/C/D；stem 内嵌的选项行与 options 逐字一致；题干必须明确标注【多选】。
+                - 正确项必须完全正确、错误项必须完全错误（不允许「部分正确」的选项）；两个正确项的位置随机分布。
+                - 选项围绕同一组易混点展开（如同一机制的两种说法、两个易混概念的判定），让「逐项判断」有真实区分度，而不是两对无关陈述。
+                实际输出不要用 Markdown 围栏包裹整个 JSON，不要输出结构以外的任何文字。
+                """;
+
+    /** 判断题作答（B3）：一个陈述句判对错，天然适配 TRAP（埋坑）探针。 */
+    private static final String JUDGE_FORMAT_SPEC = """
+                【JSON 格式 · 判断题】
+                结构必须是（stem 顶层唯一，落库依赖；options 供判分）：
+                ```json
+                {
+                  "stem": "…（一个完整、自含的陈述句／一小段带说法的代码或结论，末尾另起两行写 A. 正确／B. 错误，并附一句：请判断并回复 A 或 B）",
+                  "points": [{"text": "评分维度短语", "weight": 2}],
+                  "options": [
+                    {"key": "A", "text": "正确", "correct": true},
+                    {"key": "B", "text": "错误", "correct": false}
+                  ],
+                  "byConcept": [{"conceptIndex": 1, "points": [{"text": "评分维度短语", "weight": 2}]}]
+                }
+                ```
+                - 恰好 2 个 options（A. 正确／B. 错误）、有且只有 1 个 correct=true；stem 内嵌的选项行与 options 逐字一致。
+                - 被判断的陈述要「看起来很可信」：把常见误解、边界条件偷换、以偏概全藏进错误陈述里；正确陈述也要有思辨性（不能是废话常识）。
+                - 陈述必须自含：读者不需要额外上下文即可判断真伪；正确项位置随机。
+                实际输出不要用 Markdown 围栏包裹整个 JSON，不要输出结构以外的任何文字。
+                """;
+
     /** FREE_TEXT 作答：题干 + 评分点 + byConcept（顶层 stem 落库依赖）。 */
     private static final String FREE_TEXT_FORMAT_SPEC = """
                 【JSON 格式】
@@ -131,7 +175,12 @@ public class QuestionGenerator {
                 必须按概念分组输出 byConcept。conceptIndex 使用本次任务提供的概念清单中的序号，禁止自造。若本次任务未提供概念清单，则 conceptIndex 使用 0。
                 
                 """
-                + (format == ResponseFormat.CHOICE ? CHOICE_FORMAT_SPEC : FREE_TEXT_FORMAT_SPEC)
+                + (switch (format) {
+                    case CHOICE -> CHOICE_FORMAT_SPEC;
+                    case MULTI -> MULTI_FORMAT_SPEC;
+                    case JUDGE -> JUDGE_FORMAT_SPEC;
+                    default -> FREE_TEXT_FORMAT_SPEC;
+                })
                 + """
                 不要使用中文破折号。只产出题目与评分点，严禁给出答案、解析或提示。输出严格遵循上述 JSON 格式。""";
 
