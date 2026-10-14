@@ -125,7 +125,13 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "${WEB_PORT:-18080}:80"
+      # EdgeOne 下线后 nginx 直接对公网：80（HTTP/健康检查）+ 443（TLS，证书见下方挂载）
+      # 机房若做 NAT，把公网 80/443 映射到这两个宿主机端口即可
+      - "${WEB_HTTP_PORT:-80}:80"
+      - "${WEB_HTTPS_PORT:-443}:443"
+    volumes:
+      # TLS 证书（mianba.vip.pem / mianba.vip.key），不入镜像；nginx 启动时必须存在
+      - ./web-image/certs:/etc/nginx/certs:ro
     depends_on:
       - backend
 

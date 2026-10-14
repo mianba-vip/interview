@@ -169,7 +169,7 @@ done
 curl -fsS http://127.0.0.1:23333/healthz >/dev/null
 curl -fsS \
   -H "Host: mianba.vip" \
-  http://127.0.0.1:18080/actuator/health >/dev/null
+  "http://127.0.0.1:${WEB_HTTP_PORT:-80}/actuator/health" >/dev/null
 
 if [[ "$ENABLE_OBSERVABILITY" == "true" ]]; then
   curl -fsS http://127.0.0.1:23334/actuator/prometheus | grep -F 'mianba_async_jobs' >/dev/null
