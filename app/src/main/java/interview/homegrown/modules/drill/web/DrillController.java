@@ -440,6 +440,9 @@ public class DrillController {
                 fTurn.setCoverage(java.math.BigDecimal.valueOf(judge.coverage()));
                 fTurn.setFatalGap(judge.fatalGap());
                 turnRepo.save(fTurn);
+                // C3：把苏格拉底判定状态实时透出（event:judge）——前端给引导气泡打标签、
+                // 达标时提示「可以结束评分了」，把状态机翻译成用户语言而不是只在库里转
+                sink.event("judge", judgeJson(judge.state(), judge.coverage()));
                 // 若用户明确要答案：不按三态走引导/达标结算，直接进入揭示讲解（reveal=true）
                 if (!reveal && "done".equalsIgnoreCase(judge.state())) {
                     // 达标（覆盖≥80% 无致命缺漏）：G1 未经过引导 → 直接 GOOD 结束；
@@ -484,6 +487,17 @@ public class DrillController {
             if (full != null && !sink.isBroken()) { fTurn.setTutorText(full.trim()); turnRepo.save(fTurn); }
             sink.done();
         });
+    }
+
+    /** 苏格拉底判定状态帧（C3）：state=answering/needs_guide/done + 覆盖度 0~1。 */
+    private String judgeJson(String state, double coverage) {
+        try {
+            return objectMapper.writeValueAsString(Map.of(
+                    "state", state == null ? "" : state,
+                    "coverage", Math.round(coverage * 100) / 100.0));
+        } catch (Exception e) {
+            return "{\"state\":\"\",\"coverage\":0}";
+        }
     }
 
     /** 选择题标准答案键（mcq_options 中 correct=true 的 key，如 "B"；解析失败给兜底指令文本）。 */
