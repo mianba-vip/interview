@@ -11,4 +11,5 @@
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY web/ /usr/share/nginx/html/
-EXPOSE 80
+# 证书不入镜像：由 compose 从宿主机 web-image/certs/ 只读挂载到 /etc/nginx/certs/
+EXPOSE 80 443
