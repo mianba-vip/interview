@@ -40,11 +40,13 @@ public class DrillSupport {
     private final ProfileService profileService;
     private final QuestionService questionService;
     private final ObjectMapper objectMapper;
+    private final interview.homegrown.modules.drill.service.QuestionPrewarmStore prewarmStore;
 
     public DrillSupport(DrillRunRepository runRepo, QuestionBankRepository questionBankRepo,
                         DrillTurnRepository turnRepo, ConceptRepository conceptRepo,
                         ProgressContextService progressContext, ProfileService profileService,
-                        QuestionService questionService, ObjectMapper objectMapper) {
+                        QuestionService questionService, ObjectMapper objectMapper,
+                        interview.homegrown.modules.drill.service.QuestionPrewarmStore prewarmStore) {
         this.runRepo = runRepo;
         this.questionBankRepo = questionBankRepo;
         this.turnRepo = turnRepo;
@@ -53,6 +55,7 @@ public class DrillSupport {
         this.profileService = profileService;
         this.questionService = questionService;
         this.objectMapper = objectMapper;
+        this.prewarmStore = prewarmStore;
     }
 
     /** 当前用户所有活跃 LEARN run 的 id（READY / ANSWERING）。 */
@@ -100,6 +103,30 @@ public class DrillSupport {
             }
         }
 
+        var q = generateFor(uid, task, focus, status);
+        return openRunOnQuestion(uid, q.getId(), targetPlanId, focus);
+    }
+
+    /**
+     * 组装出题上下文并生成一道题（不建 run、不碰闸门）：openRun 主链路与讲解期预热
+     * （QuestionPrewarmService）共用同一条生成链路，保证预热题与现场生成题完全同源。
+     *
+     * <p><b>讲解期预热优先</b>（A2）：focus 非空时先消费预热缓存（Redis 一次性消费），
+     * 命中且题干不在该子点已练清单里 → 直接复用（免 LLM 秒开）；未命中/已练过 → 现场生成。</p>
+     */
+    public QuestionBank generateFor(Long uid, SelectedTask task, String focus,
+                                    java.util.function.Consumer<String> onStatus) {
+        java.util.function.Consumer<String> status = onStatus == null ? s -> { } : onStatus;
+        // 先查预热：命中免掉全部等待（含上下文组装与 LLM 生成）
+        if (focus != null && !focus.isBlank()) {
+            List<String> alreadyPracticed = practicedStemsOf(uid, task.conceptId(), focus);
+            var prewarmed = prewarmStore.consume(uid, task.conceptId(), focus)
+                    .flatMap(questionBankRepo::findById);
+            if (prewarmed.isPresent() && !alreadyPracticed.contains(prewarmed.get().getStem())) {
+                status.accept("命中讲解期预热的题目，立即开始");
+                return prewarmed.get();
+            }
+        }
         status.accept("正在组装出题上下文（学习进度 / 资料要点 / 历史练习）");
         // 学习上下文注入：学生进度 + 概念要点 + 用户资料块 + 互联网补充（素材不锁死）
         String context = progressContext.contextFor(uid, task.conceptIds());
@@ -126,8 +153,18 @@ public class DrillSupport {
             }
         }
         status.accept("正在生成题目，模型写作中（首次约需 10–60 秒，请稍候）");
-        var q = questionService.generate(task, withSkillContext(uid, context), practicedStems);       // 出题（LLM 填空）
-        return openRunOnQuestion(uid, q.getId(), targetPlanId, focus);
+        return questionService.generate(task, withSkillContext(uid, context), practicedStems);       // 出题（LLM 填空）
+    }
+
+    /** 该子点已练过的题干（去重上限 5 条；预热校验与出题去重共用）。 */
+    private List<String> practicedStemsOf(Long uid, Long conceptId, String focus) {
+        if (focus == null || focus.isBlank()) return List.of();
+        return priorFocusedRuns(uid, conceptId, focus).stream()
+                .map(r -> questionBankRepo.findById(r.getQuestionId()).map(QuestionBank::getStem).orElse(null))
+                .filter(s -> s != null && !s.isBlank())
+                .distinct()
+                .limit(5)
+                .toList();
     }
 
     /** 取同一用户、同一概念、同一子点最近完成的练习，防止同名子点跨概念串线。 */
