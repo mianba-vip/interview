@@ -292,12 +292,13 @@ public class GradingService {
         GradeResult gr = gradeRepo.findFirstByRunIdOrderByIdDesc(runId).orElse(null);
         if (gr == null) {
             // 理论上已 GRADED 必已落 GradeResult；兜底给出 AGAIN，避免空指针
-            return new GradeView(runId, run.getQuestionId(), 0, Grade.AGAIN.name(), "[]", null);
+            return new GradeView(runId, run.getQuestionId(), 0, Grade.AGAIN.name(), "[]", null, null);
         }
         double rawScore = gr.getRawScore() == null ? 0 : gr.getRawScore().doubleValue();
         String grade = run.getFinalGrade() != null ? run.getFinalGrade() : gr.getGrade().name();
         String byConcept = gr.getByConceptJson() == null ? "[]" : gr.getByConceptJson();
-        return new GradeView(runId, run.getQuestionId(), rawScore, grade, byConcept, mcqCorrectOf(gr.getQuestionId()));
+        return new GradeView(runId, run.getQuestionId(), rawScore, grade, byConcept,
+                mcqCorrectOf(gr.getQuestionId()), nextReviewOfQuestion(userId, gr.getQuestionId()));
     }
 
     /**
@@ -329,6 +330,18 @@ public class GradingService {
 
     private String mcqCorrectOf(Long questionId) {
         return questionId == null ? null : mcqCorrectOf(qbRepo.findById(questionId).orElse(null));
+    }
+
+    /** 主概念的下次复习时间（FSRS 排程，C4）：判分后掌握度已更新，读回最新 dueAt。 */
+    private java.time.Instant nextReviewOf(Long userId, QuestionBank q) {
+        if (q == null || q.getConceptIds() == null || q.getConceptIds().length == 0) return null;
+        return masteryRepo.findByUserIdAndConceptId(userId, q.getConceptIds()[0].longValue())
+                .map(Mastery::getDueAt)
+                .orElse(null);
+    }
+
+    private java.time.Instant nextReviewOfQuestion(Long userId, Long questionId) {
+        return questionId == null ? null : nextReviewOf(userId, qbRepo.findById(questionId).orElse(null));
     }
 
     /**
@@ -387,7 +400,7 @@ public class GradingService {
         applyMastery(userId, scores, run.getMode(), timed,
                 true, run.getGuideRounds(), run.isRevealed());
 
-        return new GradeView(runId, q.getId(), rawScore, Grade.GOOD.name(), "[]", mcqCorrectOf(q));
+        return new GradeView(runId, q.getId(), rawScore, Grade.GOOD.name(), "[]", mcqCorrectOf(q), nextReviewOf(uid, q));
     }
 
     /** 把整段对话拼成「老师问 / 学生答」实录，供判分器判断哪些评分点被实际考到 */
@@ -481,7 +494,7 @@ public class GradingService {
 
         return new GradeView(run.getId(), q.getId(),
                 out.rawScore() == null ? 0 : out.rawScore().doubleValue(),
-                out.grade().name(), out.byConceptJson(), mcqCorrectOf(q));
+                out.grade().name(), out.byConceptJson(), mcqCorrectOf(q), nextReviewOf(userId, q));
     }
 
     /** per concept 更新掌握度与下次复习时间（练习主流程：lean 用苏格拉底评分字段算动态到期） */
