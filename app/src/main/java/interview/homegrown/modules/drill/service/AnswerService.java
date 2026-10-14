@@ -88,6 +88,6 @@ public class AnswerService {
         gr.setGrade(Grade.AGAIN);
         gradeRepo.save(gr);
 
-        return new GradeView(runId, run.getQuestionId(), 0, Grade.AGAIN.name(), "[]", null);
+        return new GradeView(runId, run.getQuestionId(), 0, Grade.AGAIN.name(), "[]", null, null);
     }
 }
