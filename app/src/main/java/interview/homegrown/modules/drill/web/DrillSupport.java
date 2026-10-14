@@ -153,7 +153,8 @@ public class DrillSupport {
             }
         }
         status.accept("正在生成题目，模型写作中（首次约需 10–60 秒，请稍候）");
-        return questionService.generate(task, withSkillContext(uid, context), practicedStems);       // 出题（LLM 填空）
+        // 进度透传：QuestionService 的尝试次数/相似度重出/fail-safe 也走同一条 status 通道
+        return questionService.generate(task, withSkillContext(uid, context), practicedStems, status);       // 出题（LLM 填空）
     }
 
     /** 该子点已练过的题干（去重上限 5 条；预热校验与出题去重共用）。 */

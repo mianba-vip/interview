@@ -76,6 +76,17 @@ public class QuestionService {
      * 让模型针对已经答过、答对和薄弱的内容换场景、换角度继续考察。
      */
     public QuestionBank generate(SelectedTask task, String referenceText, List<String> userHistory) {
+        return generate(task, referenceText, userHistory, null);
+    }
+
+    /**
+     * 带进度回调的 {@link #generate}：生成尝试 / 相似度重出 / fail-safe 等过程经
+     * onProgress 透出（流式出题端点转发给前端，把「等得更久」变成「看得见的原因」——
+     * 去重三闸本是产品亮点，对用户透明太可惜）。回调可为 null，行为与 3 参版本一致。
+     */
+    public QuestionBank generate(SelectedTask task, String referenceText, List<String> userHistory,
+                                 java.util.function.Consumer<String> onProgress) {
+        java.util.function.Consumer<String> progress = onProgress == null ? s -> { } : onProgress;
         int arity = task.arity();
         Long primaryId = task.conceptId();
 
@@ -99,10 +110,12 @@ public class QuestionService {
             // 场景设计与端到端设计保留文本作答。
             ResponseFormat format = CHOICE_PROBES.contains(probe) ? ResponseFormat.CHOICE : ResponseFormat.FREE_TEXT;
 
+            progress.accept("第 " + (attempt + 1) + "/" + MAX_ATTEMPTS + " 次生成（考法：" + probe.label() + "）");
             GeneratedQuestion gq = generator.generate(task, probe, format, history, referenceText);
             if (gq == null || gq.stem == null || gq.stem.isBlank()) {
                 // 兜底闸：模型漏顶层 stem 时 DB 非空约束会炸（整笔回滚、任务永远 PENDING）——带错重试而非落库崩
                 log.warn("出题结果缺少顶层 stem，带错重试 attempt={} probe={}", attempt + 1, probe);
+                progress.accept("生成结果缺少题干，携带错误自动重试");
                 referenceText = (referenceText == null ? "" : referenceText + "\n\n")
                         + "上一次输出缺少顶层 stem：JSON 顶层必须同时包含 stem（完整题干）、points、byConcept。";
                 continue;
@@ -110,6 +123,7 @@ public class QuestionService {
             if (format == ResponseFormat.CHOICE && !validChoice(gq)) {
                 // 选择题结构坏（选项数/正确项/题干缺字母行）会把判分变成全 MISS——带错重试而非落库
                 log.warn("选择题结构不合法，带错重试 attempt={} probe={}", attempt + 1, probe);
+                progress.accept("选择题结构不合法，携带错误自动重试");
                 referenceText = (referenceText == null ? "" : referenceText + "\n\n")
                         + "上一次选择题结构不合法：options 必须恰好 4 项、key 为 A/B/C/D、有且只有 1 个 correct=true，"
                         + "且 stem 内必须出现 A./B./C./D. 四个选项行（与 options 逐字一致）。";
@@ -133,6 +147,8 @@ public class QuestionService {
             }
             log.warn("出题重复度过高 sim={} concept={} probe={} attempt={}/{}，换认知动作重出",
                     String.format("%.3f", sim), primaryId, probe, attempt + 1, MAX_ATTEMPTS);
+            progress.accept("与历史题相似度 " + String.format("%.2f", sim)
+                    + "（阈值 " + String.format("%.2f", DUP_THRESHOLD) + "），换一种考法重出");
             referenceText = (referenceText == null ? "" : referenceText + "\n\n")
                     + "上一版新题与历史题过于相似（相似度 " + String.format("%.2f", sim)
                     + "），本次必须更换实际场景、示例代码和核心问法，不得只改措辞。";
@@ -140,6 +156,9 @@ public class QuestionService {
 
         if (accepted == null || accepted.stem == null || accepted.stem.isBlank()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "出题失败：模型未返回有效题干，请重试");
+        }
+        if (acceptedBestSim != Double.MAX_VALUE) {
+            progress.accept("多次生成仍与历史题偏相似，已采用最不相似的一版（宁可略像，不卡做题）");
         }
         ResponseFormat fmt = CHOICE_PROBES.contains(acceptedProbe) ? ResponseFormat.CHOICE : ResponseFormat.FREE_TEXT;
         if (fmt == ResponseFormat.CHOICE && !validChoice(accepted)) {

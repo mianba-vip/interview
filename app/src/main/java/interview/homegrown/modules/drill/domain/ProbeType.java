@@ -47,6 +47,19 @@ public enum ProbeType {
         return arity >= minArity && arity <= maxArity;
     }
 
+    /** 中文短名（出题进度透出用）：用户看不懂 RECALL/CLOZE 这类内部枚举名。 */
+    public String label() {
+        return switch (this) {
+            case RECALL -> "直接回忆";
+            case CLOZE -> "挖空补全";
+            case REVERSE -> "倒推原因";
+            case TRAP -> "找错纠错";
+            case SCENARIO -> "场景决策";
+            case CONTRAST -> "对比辨析";
+            case INTEGRATION -> "链路串联";
+        };
+    }
+
     /**
      * 已停用出题的题型（保留枚举值兼容历史题库数据与渲染，但不再生成新题）。
      * <p>CLOZE 挖空题：要求"题干声明 / 代码挖空 / 题目复述"三处对账，模型规划-渲染漂移导致
