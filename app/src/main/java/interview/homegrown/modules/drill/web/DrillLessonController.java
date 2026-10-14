@@ -39,12 +39,14 @@ public class DrillLessonController {
     private final LessonGenerator lessonGenerator;
     private final LessonQaGenerator lessonQaGenerator;
     private final DrillSupport support;
+    private final interview.homegrown.modules.drill.service.QuestionPrewarmService prewarmService;
 
     public DrillLessonController(ConceptRepository conceptRepo, ConceptLessonRepository conceptLessonRepo,
                                  SubPointPassRepository subPointPassRepo, LessonQaRepository lessonQaRepo,
                                  DrillRunRepository runRepo, ProgressContextService progressContext,
                                  LessonGenerator lessonGenerator, LessonQaGenerator lessonQaGenerator,
-                                 DrillSupport support) {
+                                 DrillSupport support,
+                                 interview.homegrown.modules.drill.service.QuestionPrewarmService prewarmService) {
         this.conceptRepo = conceptRepo;
         this.conceptLessonRepo = conceptLessonRepo;
         this.subPointPassRepo = subPointPassRepo;
@@ -54,10 +56,24 @@ public class DrillLessonController {
         this.lessonGenerator = lessonGenerator;
         this.lessonQaGenerator = lessonQaGenerator;
         this.support = support;
+        this.prewarmService = prewarmService;
     }
 
 
     // ------------------------------------------------------------ 先教后考（拆解 + 子知识点讲解）
+
+    /**
+     * 讲解期预热出题（A2）：前端在子点讲解流结束后调用，后台提前生成该子点的第一道题
+     * 存入预热缓存（Redis，6h，做题时一次性消费），点「开始做题」秒开。
+     * 立即返回、fire-and-forget：预热失败静默降级为做题时现场生成；
+     * 同一子点已有结果/正在预热时返回 ok=false（无需重复触发）。
+     */
+    @PostMapping("/{conceptId}/prewarm")
+    public Map<String, Object> prewarm(@PathVariable Long conceptId, @RequestParam String subPoint) {
+        Long uid = CurrentUser.id();
+        boolean started = prewarmService.prewarm(uid, conceptId, subPoint);
+        return Map.of("ok", started);
+    }
 
     /** 拆解知识点为子知识点清单（缓存 concept.lesson_outline；无缓存则现场拆解后写回）。 */
     @PostMapping("/{conceptId}/outline")
