@@ -98,6 +98,11 @@ app:
   # 否则任意登录用户都能让服务器读取任意目录。默认 false = 仅 127.0.0.1/::1 可调用。
   local-fs:
     allow-remote: ${APP_LOCAL_FS_ALLOW_REMOTE:false}
+  # 知识图谱锻造炉（kg-forge，LangGraph sidecar）：仅 compose 内网可达，
+  # 公网不可达；secret 为服务间第二道认证（与 kg-forge 的 FORGE_SECRET 一致）。
+  forge:
+    base-url: ${APP_FORGE_BASE_URL:http://localhost:8100}
+    secret: ${APP_FORGE_SECRET:change-me-forge-secret}
   storage:
     mode: ${APP_STORAGE_MODE:local}
     local-dir: ${APP_STORAGE_LOCAL_DIR:./data/files}
