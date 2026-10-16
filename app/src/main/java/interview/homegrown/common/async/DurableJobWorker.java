@@ -29,6 +29,7 @@ public class DurableJobWorker {
     private final ProjectAnalysisService projects;
     private final CorpusIndexer corpora;
     private final DailyPlanService daily;
+    private final interview.homegrown.modules.studyplan.service.ForgeService forge;
     private final AsyncJobTelemetry telemetry;
     private final Semaphore capacity = new Semaphore(2);
     private final ExecutorService workers = Executors.newFixedThreadPool(2);
@@ -36,6 +37,7 @@ public class DurableJobWorker {
 
     public DurableJobWorker(DurableJobStore store, DurableJobQueue queue, AiSettingsService settings,
                             ProjectAnalysisService projects, CorpusIndexer corpora, DailyPlanService daily,
+                            interview.homegrown.modules.studyplan.service.ForgeService forge,
                             AsyncJobTelemetry telemetry) {
         this.store = store;
         this.queue = queue;
@@ -43,6 +45,7 @@ public class DurableJobWorker {
         this.projects = projects;
         this.corpora = corpora;
         this.daily = daily;
+        this.forge = forge;
         this.telemetry = telemetry;
     }
 
@@ -107,6 +110,7 @@ public class DurableJobWorker {
             case PROJECT_ANALYSIS -> projects.runJob(job.entityId(), job.userId());
             case CORPUS_INDEX -> corpora.runJob(job.entityId(), job.userId(), job.refreshRequested());
             case DAILY_QUESTION -> daily.runJob(job.entityId(), job.userId());
+            case KG_FORGE -> forge.runJob(job.entityId(), job.userId());
         }
     }
 
@@ -115,6 +119,7 @@ public class DurableJobWorker {
             case PROJECT_ANALYSIS -> projects.markJobFailure(job.entityId(), job.userId(), dead, reason);
             case CORPUS_INDEX -> corpora.markJobFailure(job.entityId(), job.userId(), dead);
             case DAILY_QUESTION -> { /* 题目未就绪时保持 PENDING，用户可从失败队列重试。 */ }
+            case KG_FORGE -> forge.markJobFailure(job.entityId(), job.userId(), dead, reason);
         }
     }
 
