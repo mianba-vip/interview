@@ -29,18 +29,15 @@ GRAPH = None  # 编译好的图（含 checkpointer），在 lifespan 里初始�
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """AsyncPostgresSaver 持有异步连接，必须在 async with 生命周期内使用；
+    setup() 是协程（自建 ckpt_* 表，幂等），随服务启动执行一次。"""
     global GRAPH
-    GRAPH = build_graph(_build_checkpointer())
-    yield
-
-
-def _build_checkpointer() -> BaseCheckpointSaver:
-    """PostgresSaver（生产）——测试里由 conftest 换成 InMemorySaver 注入。"""
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-    saver = AsyncPostgresSaver.from_conn_string(settings.forge_db_url)
-    saver.setup()  # 自建 ckpt_* 表（幂等）
-    return saver
+    async with AsyncPostgresSaver.from_conn_string(settings.forge_db_url) as saver:
+        await saver.setup()
+        GRAPH = build_graph(saver)
+        yield
 
 
 def _config(run_id: str) -> dict:

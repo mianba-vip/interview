@@ -67,14 +67,14 @@ CFG = {"configurable": {"thread_id": "forge-test-1"}}
 @pytest.mark.asyncio
 async def test_full_flow_interrupt_then_approve(fake_llm: FakeLlm):
     app = g.build_graph(InMemorySaver())
+    # ainvoke 在 assemble 的 interrupt 处返回当前状态（不抛异常）
     result = await app.ainvoke(_req(), config=CFG)
 
     # 两个主题并行，各 1 次起草
     assert fake_llm.draft_calls == 2
-    # 图停在 awaiting_review（assemble 被 interrupt 挂起，节点未返回）
-    assert result is None or "status" not in (result or {})
+    assert result["status"] == "forging"  # assemble 尚未返回，status 停在分支合并后的 forging
     snap = await app.aget_state(CFG)
-    assert snap.next  # 有待重入节点
+    assert snap.next  # 有待重入节点（assemble 被 interrupt 挂起）
 
     from kg_forge.schema import dedup_proposals
 

@@ -67,7 +67,7 @@ docker-compose（加进 interview 仓库的 prod compose）：
     restart: unless-stopped
     environment:
       FORGE_SECRET: ${APP_FORGE_SECRET:?}
-      FORGE_DB_URL: jdbc 占位改成 pg 形式 postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      FORGE_DB_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     # 不发布端口：仅 compose 内网，backend 通过服务名 kg-forge:8100 访问
     depends_on: [postgres]
 ```
