@@ -49,6 +49,7 @@ public class ForgeService {
 
     private final KgForgeRunRepository runRepo;
     private final ConceptRepository conceptRepo;
+    private final interview.homegrown.modules.studyplan.repository.StudyPlanRepository planRepo;
     private final DurableJobQueue jobQueue;
     private final NgramSimilarityGuard similarity;
     private final ObjectMapper objectMapper;
@@ -59,12 +60,14 @@ public class ForgeService {
             .build();
 
     public ForgeService(KgForgeRunRepository runRepo, ConceptRepository conceptRepo,
+                        interview.homegrown.modules.studyplan.repository.StudyPlanRepository planRepo,
                         DurableJobQueue jobQueue, NgramSimilarityGuard similarity,
                         ObjectMapper objectMapper,
                         @Value("${app.forge.base-url}") String baseUrl,
                         @Value("${app.forge.secret}") String secret) {
         this.runRepo = runRepo;
         this.conceptRepo = conceptRepo;
+        this.planRepo = planRepo;
         this.jobQueue = jobQueue;
         this.similarity = similarity;
         this.objectMapper = objectMapper;
@@ -76,6 +79,12 @@ public class ForgeService {
 
     public Map<String, Object> create(Long userId, Long planId, String topic, String goal, Integer layerBudget) {
         if (topic == null || topic.isBlank()) throw new ResponseStatusException(BAD_REQUEST, "请填写学习方向");
+        // 归属校验：planId 必须是当前用户自己的学习方向，否则等于可以往别人的图谱里注入概念
+        if (planId != null) {
+            planRepo.findById(planId)
+                    .filter(p -> userId.equals(p.getUserId()))
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "学习方向不存在"));
+        }
         KgForgeRun run = new KgForgeRun();
         run.setUserId(userId);
         run.setPlanId(planId);
@@ -149,7 +158,7 @@ public class ForgeService {
             out.put("error", run.getError());
             return out;
         }
-        String status = remote.path("status").asText("RUNNING").toUpperCase();
+        String status = normalizeStatus(remote.path("status").asText("RUNNING"));
         // 同步行状态（列表页不依赖 sidecar）
         if (!status.equals(run.getStatus())) {
             run.setStatus(status);
@@ -249,6 +258,20 @@ public class ForgeService {
     }
 
     // ------------------------------------------------------------- 内部
+
+    /**
+     * sidecar 状态 → 行/前端状态归一。sidecar 的图内阶段（planning/forging）对前端
+     * 无意义（都算锻造中），终态映射为行状态枚举；未知值保守视为 RUNNING。
+     */
+    private static String normalizeStatus(String raw) {
+        return switch (raw == null ? "" : raw.toLowerCase()) {
+            case "awaiting_review" -> "AWAITING_REVIEW";
+            case "approved" -> "APPROVED";
+            case "rejected" -> "REJECTED";
+            case "failed" -> "FAILED";
+            default -> "RUNNING";   // planning / forging / running / 未知
+        };
+    }
 
     private KgForgeRun owned(Long userId, Long runId) {
         return runRepo.findByUserIdAndId(userId, runId)
