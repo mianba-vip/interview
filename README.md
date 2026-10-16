@@ -99,3 +99,5 @@ DurableJob(KG_FORGE) → Worker 取 BYOK 配置调 sidecar → 前端轮询
 - research 节点（corpus 检索 / web 检索）：`source` 字段已预留；
 - 题库批产：题目生成仍走 Java 侧 QuestionService（B 系列已把现场出题提速），
   如需批产可在 assemble 前加一层并行节点，产物走同一审核通道。
+  ⚠️ **注意**：若在 interrupt 之后新增需要调 LLM 的阶段，finalize 时必须重新
+  传入 BYOK key（跑图结束后 KeyRing 已清理；当前 assemble 是纯函数所以无此需求）。

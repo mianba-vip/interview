@@ -26,6 +26,12 @@ log = logging.getLogger(__name__)
 
 GRAPH = None  # 编译好的图（含 checkpointer），在 lifespan 里初始化
 
+# asyncio.create_task 只被事件loop弱引用：不持强引用，跑几分钟的锻造任务可能被
+# GC 中途回收（Python 官方文档明确要求保存返回的 Task）。
+_BACKGROUND_TASKS: set = set()
+# 本进程正在跑的 thread：防同进程重复触发（DurableJob 重试 / 双击触发）。
+_ACTIVE_THREADS: set = set()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -60,11 +66,29 @@ async def healthz() -> dict:
 @app.post("/runs", status_code=202)
 async def start_run(req: ForgeRequest, x_forge_secret: str | None = Header(default=None)) -> dict:
     _require_secret(x_forge_secret)
+
+    # 幂等护栏（防 DurableJob 重试/重复触发造成重复锻造重复扣费）：
+    # ① 本进程正在跑 → 跳过；② 待人工审核或已终态 → 跳过；
+    # ③ 停在 planning/forging 且本进程无任务（sidecar 中途崩溃重启后的陈旧
+    #    checkpoint）→ 允许重跑，批内重复由去重纯函数兜底。
+    if req.run_id in _ACTIVE_THREADS:
+        return {"run_id": req.run_id, "accepted": True, "already": "running"}
+    existing = await GRAPH.aget_state(_config(req.run_id))
+    if existing.values:
+        prior = existing.values.get("status", "")
+        if prior == "awaiting_review" or prior in FINAL_STATUSES:
+            log.info("重复触发 run_id=%s，已有状态 %s —— 幂等跳过", req.run_id, prior)
+            return {"run_id": req.run_id, "accepted": True, "already": prior}
+        log.info("陈旧 checkpoint 重跑 run_id=%s，此前状态 %s", req.run_id, prior)
+
     key_ring.put(req.run_id, req.llm.model_dump() if req.llm else None)
+    _ACTIVE_THREADS.add(req.run_id)
 
     import asyncio
 
-    asyncio.create_task(_run(req))
+    task = asyncio.create_task(_run(req))
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
     return {"run_id": req.run_id, "accepted": True}
 
 
@@ -88,6 +112,7 @@ async def _run(req: ForgeRequest) -> None:
         except Exception:  # noqa: BLE001
             log.exception("写入失败状态也失败了 run_id=%s", req.run_id)
     finally:
+        _ACTIVE_THREADS.discard(req.run_id)
         key_ring.pop(req.run_id)  # key 只在跑图期间驻内存
 
 
@@ -102,7 +127,7 @@ async def get_run(run_id: str, x_forge_secret: str | None = Header(default=None)
         return {"status": status, "error": values.get("error"), "coverage": values.get("coverage")}
 
     # interrupt 挂起：assemble 待重入 → 审核页载荷从已合并提案现算（与节点内同一纯函数）
-    if status in ("forging",) and snapshot.next:
+    if snapshot.next:
         interrupted = any(
             getattr(t, "interrupts", None) for t in (snapshot.tasks or {}).values()
         )
@@ -115,6 +140,10 @@ async def get_run(run_id: str, x_forge_secret: str | None = Header(default=None)
                 "concepts": kept,
                 "report": report.model_dump(),
             }
+        # 有待跑节点但本进程没有对应任务 = sidecar 中途崩溃/重启遗留的陈旧 thread：
+        # 如实报中断，别让前端永远转圈（重新发起一次锻造即可恢复）
+        if run_id not in _ACTIVE_THREADS:
+            return {"status": "failed", "error": "锻造因服务重启中断，请重新发起"}
     return {"status": status or "running"}
 
 
