@@ -2,7 +2,6 @@ package interview.homegrown.modules.studyplan.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import interview.homegrown.common.web.CurrentUser;
-import interview.homegrown.modules.studyplan.domain.KgForgeRun;
 import interview.homegrown.modules.studyplan.repository.KgForgeRunRepository;
 import interview.homegrown.modules.studyplan.service.ForgeService;
 import org.springframework.web.bind.annotation.*;

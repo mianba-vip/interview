@@ -25,6 +25,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.CONFLICT;
@@ -82,9 +83,9 @@ public class ForgeService {
         run.setGoal(goal == null || goal.isBlank() ? null : goal.strip());
         run.setLayerBudget(layerBudget == null ? 50 : Math.max(10, Math.min(120, layerBudget)));
         run.setStatus("PENDING");
+        // thread_id 列 NOT NULL：入库前就要有值（不依赖 DB 自增 id，一次 save 原子完成）
+        run.setThreadId("forge-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16));
         run = runRepo.save(run);
-        run.setThreadId("forge-" + run.getId());
-        runRepo.save(run);
         // 记住请求级 BYOK 配置，Worker 领取时随任务转发给 sidecar（key 只经内存）
         jobQueue.enqueue(DurableJobType.KG_FORGE, run.getId(), userId, false, false);
         return Map.of("id", run.getId(), "threadId", run.getThreadId());
@@ -139,11 +140,14 @@ public class ForgeService {
         try {
             remote = get("/runs/" + run.getThreadId());
         } catch (Exception e) {
-            // sidecar 暂不可达：用行状态兜底（PENDING/RUNNING/FAILED）
+            // sidecar 暂不可达：用行状态兜底（PENDING/RUNNING/FAILED）。
+            // error 可能为 null——Map.of 不接受 null 值，用 HashMap
             log.debug("查询 sidecar 状态失败 runId={}: {}", runId, e.getMessage());
-            return Map.of("id", run.getId(), "status",
-                    "FAILED".equals(run.getStatus()) ? "FAILED" : "RUNNING",
-                    "error", run.getError());
+            Map<String, Object> out = new java.util.HashMap<>();
+            out.put("id", run.getId());
+            out.put("status", "FAILED".equals(run.getStatus()) ? "FAILED" : "RUNNING");
+            out.put("error", run.getError());
+            return out;
         }
         String status = remote.path("status").asText("RUNNING").toUpperCase();
         // 同步行状态（列表页不依赖 sidecar）

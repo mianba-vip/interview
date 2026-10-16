@@ -7,6 +7,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import interview.homegrown.modules.corpus.service.CorpusIndexer;
 import interview.homegrown.modules.studyplan.service.DailyPlanService;
+import interview.homegrown.modules.studyplan.service.ForgeService;
 import interview.homegrown.modules.project.service.ProjectAnalysisService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,7 @@ class DurableJobWorkerTest {
         when(store.claim()).thenReturn(Optional.of(job));
         DurableJobWorker worker = new DurableJobWorker(store, queue, mock(AiSettingsService.class),
                 mock(ProjectAnalysisService.class), mock(CorpusIndexer.class), mock(DailyPlanService.class),
+                mock(ForgeService.class),
                 new AsyncJobTelemetry(new SimpleMeterRegistry(), ObservationRegistry.create(), store));
         try {
             worker.poll();
@@ -58,7 +60,7 @@ class DurableJobWorkerTest {
         doAnswer(call -> { call.<Runnable>getArgument(1).run(); return null; })
                 .when(settings).withTaskConfig(any(), any());
         DurableJobWorker worker = new DurableJobWorker(store, queue, settings, projects,
-                mock(CorpusIndexer.class), mock(DailyPlanService.class),
+                mock(CorpusIndexer.class), mock(DailyPlanService.class), mock(ForgeService.class),
                 new AsyncJobTelemetry(new SimpleMeterRegistry(), ObservationRegistry.create(), store));
         try {
             worker.poll();
