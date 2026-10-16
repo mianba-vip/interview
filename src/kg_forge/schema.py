@@ -51,6 +51,15 @@ class CritiqueBatch(BaseModel):
     items: list[CritiqueItem]
 
 
+class LlmConfig(BaseModel):
+    """BYOK：由后端随任务传入，只存在于进程内存（KeyRing），绝不进 checkpoint。"""
+
+    base_url: str
+    api_key: str
+    model: str
+    temperature: float = 0.7
+
+
 class ForgeRequest(BaseModel):
     """POST /runs 请求体（由 interview 后端的 DurableJobWorker 发起）。"""
 
@@ -59,16 +68,7 @@ class ForgeRequest(BaseModel):
     goal: str | None = None
     layer_budget: int = 50            # 概念总数预算（审核页的阅读负担上限）
     existing_names: list[str] = Field(default_factory=list)  # 已有概念名（Java 侧快照，用于去重）
-    llm: "LlmConfig | None" = None    # 用户 BYOK；不传则用服务端兜底配置
-
-
-class LlmConfig(BaseModel):
-    """BYOK：由后端随任务传入，只存在于进程内存（KeyRing），绝不进 checkpoint。"""
-
-    base_url: str
-    api_key: str
-    model: str
-    temperature: float = 0.7
+    llm: LlmConfig | None = None      # 用户 BYOK；不传则用服务端兜底配置
 
 
 class FinalizeRequest(BaseModel):

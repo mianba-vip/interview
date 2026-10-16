@@ -39,7 +39,7 @@ L5 故障（出问题怎么办：典型故障、排查思路、调优手段）
 - 层级归属要准：参数调优属于 L3/L5，不是 L1。
 - 已有概念名（避免重复出）：{existing}
 - 严格遵守数量预算：本主题生成不超过 {per_topic} 个。
-- 只输出 JSON：{"concepts": [{"name","description","topic","layer","sub_points":[...]}]}
+- 只输出 JSON：{{"concepts": [{{"name","description","topic","layer","sub_points":[...]}}]}}
 """
 
 DRAFT_USER_TMPL = """\
