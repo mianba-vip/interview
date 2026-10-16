@@ -59,11 +59,11 @@ START → plan ──Send 并行播种──► forge_topic(每主题一条支�
 
 ## 部署
 
-docker-compose（加进 interview 仓库的 prod compose）：
+docker-compose（本目录已并入 interview 仓库，服务加进仓库根目录的 `docker-compose.prod.yml`）：
 
 ```yaml
   kg-forge:
-    build: ../kg-forge        # 或镜像引用
+    build: ./kg-forge         # 或镜像引用
     restart: unless-stopped
     environment:
       FORGE_SECRET: ${APP_FORGE_SECRET:?}
