@@ -300,7 +300,7 @@ npm run dist:win:local  # Windows（需在 macOS 上跑脚本）
 
 ```bash
 bash deploy/deploy-local.sh
-# 构建 jar + Web SPA → scp/tar 上传 → 服务器跑 deploy-prod.sh（PG 备份→docker 重启→健康检查）
+# 仅构建和发布后端；前端由 ../mianba-web/deploy/deploy-web.sh 发布到 106.14.143.151
 # 可用环境变量：SSH_HOST / SSH_PORT(默认37777) / SSH_USER / SSH_KEY / DEPLOY_DIR
 ```
 
@@ -334,25 +334,20 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 **公网**：用 Nginx / Caddy 反代 **23333** 端口并配 HTTPS。桌面端 SPA 从 `file://` 请求，跨域已放行（CORS `*`）。
 
-### 自动部署（GitHub Actions）
+### 前后端分机部署
 
-推送到 `main` 时，`Deploy to server` 工作流会自动构建并部署后端 + Web 到服务器（也可在 Actions 页手动触发）。采用**产物式部署**，与服务器 `/opt/mianba` 的实际结构一致：
+后端仍位于 `103.236.92.40` 的 `/opt/mianba`，SSH 端口为 `37777`。
+本地运行 `bash deploy/deploy-local.sh`，上传后端 JAR 与远端发布脚本；发布前备份 PostgreSQL，之后仅构建和更新后端及其基础设施。
+生产 Compose 中的 `web` 已归入 `legacy-web` profile，默认不再启动；原 Web 容器与文件保留供回退。
 
-1. **CI 构建产物**：后端 fat jar（`./gradlew :app:bootJar`）+ Web SPA（`npm run build`）。
-2. **上传产物**：Windows 兼容的 `scp + ssh/tar` 上传 `app.jar → /opt/mianba/backend/app.jar`、Web 静态文件、`deploy/nginx.conf → /opt/mianba/web-image/nginx.conf` 和 `deploy/deploy-prod.sh`；有 `official-site/index.html` 时整体更新官网与 `/app`，缺少官网源码时只更新 `/app` 并保留服务器现有官网；`.env`、`backups/`、自定义 `docker-compose.yml` 都保留。
-3. **复用镜像**：`deploy-prod.sh` 对基础设施镜像（postgres/redis/minio）「已存在则复用、缺失才拉取」；backend/web 用 docker 层缓存构建（未变化的层直接复用）；`compose up` 带 `--no-build`；部署前自动备份 PostgreSQL，部署后健康检查。
+官网、`/app` SPA 和 `/download` 已迁移到 `106.14.143.151:443`，由相邻 `mianba-web` 仓库的 `deploy/deploy-web.sh` 独立发布。
+新前端机的 Nginx 通过加密 SSH 隧道连接原后端，网页仍使用相对 `/api`，不需要改为跨域请求。
 
-配置一次即可（仓库 **Settings → Secrets and variables → Actions**）：
+域名仍经过 EdgeOne，实际回源旧机的 `18080` Web 容器，使用 [容器过渡配置](deploy/nginx-container-entry.conf)。宿主机 `/etc/nginx/conf.d/mianba.conf` 使用 [宿主机入口配置](deploy/nginx-entry.conf)，两个入口均通过 HTTPS 转发到新前端机。
+当前前端 Nginx 配置和完整操作说明分别在 `../mianba-web/deploy/nginx.conf` 与 `../mianba-web/deploy/README.md`。
+本仓库 `deploy/nginx.conf` 仅供旧 Docker Web 回退，不再由后端部署脚本同步。
 
-| Secret | 值 |
-|---|---|
-| `SERVER_HOST` | 服务器 IP，如 `103.236.92.40` |
-| `SERVER_USER` | SSH 用户名，如 `root` |
-| `SERVER_SSH_KEY` | SSH 私钥完整内容（含 `-----BEGIN ...-----` 行；公钥需已加入服务器 `~/.ssh/authorized_keys`） |
-| `SERVER_SSH_PORT` | SSH 端口（非默认 22 时必填，如 `37777`） |
-| `DEPLOY_DIR` | 可选，部署目录，默认 `/opt/mianba` |
-
-> 要求：服务器已装 docker 与 docker compose v2；`/opt/mianba/.env` 已配置好全部环境变量（`APP_JWT_SECRET` 等）；Web 对外端口按你的 NAT/防火墙规则暴露（如内部 18080 NAT 到 5678）。
+GitHub Actions 仅构建制品；服务器发布由本地部署脚本完成。若确需回退到同机部署，手动准备旧 Web 构建上下文，再用 `DEPLOY_LEGACY_WEB=true` 运行 `deploy-prod.sh`。
 
 ## 🏗️ 架构设计
 
