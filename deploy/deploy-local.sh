@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# 本地一键部署：构建后端 jar（SPA 由独立仓库 mianba-web 部署）→ 上传服务器 → 重启服务 → 健康检查
+# 后端部署到 103.236.92.40；官网与 SPA 由 mianba-web 发布到 106.14.143.151。
 #
 # 背景：服务器机房（陕西电信云基地/XIAOTEYUN）限制境外入站，GitHub Actions
 #       直连部署不可用；本机（国内 IP）SSH 可达，故用本脚本完成部署。
@@ -16,7 +16,7 @@
 #   DEPLOY_DIR 服务器部署目录           默认 /opt/mianba
 #   ENABLE_OBSERVABILITY 首次启用监控时设 true；之后由服务器标记自动沿用
 #
-# 流程：预检 SSH → gradle 构建 jar → vite 构建 web（相对 API）→
+# 流程：预检 SSH → gradle 构建 jar →
 #       scp/tar 上传产物 → 服务器跑 deploy-prod.sh（先备份 PG，
 #       再 docker 缓存构建 + 重启 + 健康检查）→ 本地复核后端健康。
 # ============================================================================
@@ -94,34 +94,6 @@ remote_sha() {
     "if [ -f '$path' ]; then sha256sum '$path' | cut -d ' ' -f1; else echo MISSING; fi"
 }
 
-stream_tree() {
-  local local_dir="$1" remote_stage="$2"
-  tar -C "$local_dir" -czf - . | \
-    "${SSH[@]}" "$REMOTE" "tar -xzf - -C '$remote_stage'"
-}
-
-upload_tree() {
-  local local_dir="$1"
-  local remote_target="$2"
-  local expected_file="${3:-index.html}"
-  local remote_parent="${remote_target%/*}"
-  local remote_name="${remote_target##*/}"
-  local remote_stage="$remote_parent/.${remote_name}.uploading"
-  local remote_previous="$remote_parent/.${remote_name}.previous"
-
-  retry "创建 Web 暂存目录" "${SSH[@]}" "$REMOTE" \
-    "set -e; rm -rf -- '$remote_stage'; mkdir -p '$remote_stage'"
-  retry "上传 Web 目录" stream_tree "$local_dir" "$remote_stage"
-  # 如果服务器已完成切换但 SSH 回执丢失，重试只校验正式目录，不会再移走它。
-  retry "切换 Web 目录" "${SSH[@]}" "$REMOTE" \
-    "set -e; if [ -d '$remote_stage' ]; then \
-       test -f '$remote_stage/$expected_file'; \
-       rm -rf -- '$remote_previous'; \
-       if [ -e '$remote_target' ]; then mv '$remote_target' '$remote_previous'; fi; \
-       mv '$remote_stage' '$remote_target'; \
-     fi; test -f '$remote_target/$expected_file'"
-}
-
 # ---------- 0/5 预检 ----------
 [ -f "$SSH_KEY" ] || { echo "❌ SSH 私钥不存在：$SSH_KEY"; exit 1; }
 [[ "$DEPLOY_DIR" =~ ^/[A-Za-z0-9._/-]+$ && "$DEPLOY_DIR" != "/" \
@@ -144,27 +116,13 @@ bash "$ROOT/deploy/build-backend.sh"
 [ -f "$JAR" ] || { echo "❌ jar 构建失败：$JAR 不存在"; exit 1; }
 echo "   ✓ jar: $(ls -la "$JAR" | awk '{print $5}') bytes"
 
-# ---------- 2/5 同步官网静态资源（/app SPA 由独立仓库 mianba-web 部署）----------
-step "2/5 同步官网静态资源（/app SPA 由 mianba-web 仓库独立部署）"
-
-# 官网静态资源解包覆盖到 web 根（保留服务器上的 /app 与 /download，
-# 这两处分别由 mianba-web 与 mianba-mobile 仓库的部署脚本维护）。
-WEB_STAGE="$ROOT/deploy/web-build/web"
-rm -rf "$WEB_STAGE" && mkdir -p "$WEB_STAGE"
-if [ -f "$ROOT/official-site/index.html" ]; then
-  cp -R "$ROOT/official-site/." "$WEB_STAGE/"
-  chmod -R a+rX "$WEB_STAGE"
-  WEB_UPLOAD_SOURCE="$WEB_STAGE"
-  echo "   ✓ web: official-site 静态资源（/app 由 mianba-web 仓库维护）"
-else
-  WEB_UPLOAD_SOURCE=""
-  echo "   ⚠ official-site/index.html 不存在：本次跳过官网静态资源"
-fi
+# ---------- 2/5 前端独立部署 ----------
+step "2/5 前端已迁移到 106.14.143.151（本脚本只发布后端）"
 
 # ---------- 3/5 上传产物 ----------
 step "3/5 上传产物到服务器"
 retry "创建服务器部署目录" "${SSH[@]}" "$REMOTE" \
-  "mkdir -p '$DEPLOY_DIR/backend' '$DEPLOY_DIR/web-image/web'"
+  "mkdir -p '$DEPLOY_DIR/backend'"
 
 command -v sha256sum >/dev/null || { echo "❌ 缺少 sha256sum，无法校验上传产物"; exit 1; }
 JAR_SHA="$(sha256sum "$JAR" | cut -d ' ' -f1)"
@@ -198,21 +156,6 @@ retry "切换后端 jar" "${SSH[@]}" "$REMOTE" \
      mv -f '$JAR_STAGE' '$JAR_TARGET'; \
    fi; printf '%s  %s\n' '$JAR_SHA' '$JAR_TARGET' | sha256sum -c - >/dev/null"
 echo "   ✓ backend/app.jar"
-if [ -n "${WEB_UPLOAD_SOURCE:-}" ]; then
-  tar -C "$WEB_UPLOAD_SOURCE" -czf - . |     "${SSH[@]}" "$REMOTE" "tar -xzf - -C '$DEPLOY_DIR/web-image/web'"
-  echo "   ✓ 官网静态资源已同步（/app 与 /download 由各自仓库部署脚本维护）"
-fi
-"${SCP[@]}" deploy/nginx.conf "$REMOTE:$DEPLOY_DIR/web-image/nginx.conf.uploading"
-"${SSH[@]}" "$REMOTE" \
-  "mv -f '$DEPLOY_DIR/web-image/nginx.conf.uploading' '$DEPLOY_DIR/web-image/nginx.conf'"
-echo "   ✓ web-image/nginx.conf"
-# web 镜像的 Dockerfile 入库管理（此前只存在于服务器上，仓库里的 Dockerfile.web
-# 因 COPY frontend/ 已断链）：与 nginx.conf 一并同步，保证服务器 web-image/Dockerfile
-# 与仓库 deploy/web-image.Dockerfile 一致。
-"${SCP[@]}" deploy/web-image.Dockerfile "$REMOTE:$DEPLOY_DIR/web-image/Dockerfile.uploading"
-"${SSH[@]}" "$REMOTE" \
-  "mv -f '$DEPLOY_DIR/web-image/Dockerfile.uploading' '$DEPLOY_DIR/web-image/Dockerfile'"
-echo "   ✓ web-image/Dockerfile"
 "${SCP[@]}" deploy/deploy-prod.sh "$REMOTE:$DEPLOY_DIR/deploy-prod.sh.uploading"
 "${SSH[@]}" "$REMOTE" \
   "mv -f '$DEPLOY_DIR/deploy-prod.sh.uploading' '$DEPLOY_DIR/deploy-prod.sh'"

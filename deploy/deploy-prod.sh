@@ -6,7 +6,10 @@ set -Eeuo pipefail
 # Persistent volumes are never removed.
 
 DEPLOY_DIR="${DEPLOY_DIR:-/opt/mianba}"
-# 仓库里的生产 compose 文件名（GitHub Actions 部署时显式传 COMPOSE_FILE，这里仅兜底）
+# 前端已迁移到 106.14.143.151；仅回退到旧同机部署时显式设为 true。
+DEPLOY_LEGACY_WEB="${DEPLOY_LEGACY_WEB:-false}"
+[[ "$DEPLOY_LEGACY_WEB" =~ ^(true|false)$ ]] || { echo 'Invalid DEPLOY_LEGACY_WEB' >&2; exit 1; }
+# 本地部署脚本会显式传入服务器现有 docker-compose.yml，此处保留生产文件名兜底。
 COMPOSE_FILE="${COMPOSE_FILE:-$DEPLOY_DIR/docker-compose.prod.yml}"
 OBSERVABILITY_FILE="$DEPLOY_DIR/docker-compose.monitoring.yml"
 ENABLE_OBSERVABILITY="${ENABLE_OBSERVABILITY:-auto}"
@@ -128,13 +131,16 @@ fi
 
 # Build only local application images. Docker reuses cached base images/layers and
 # does not contact the registry because no --pull option is supplied.
-echo "[build] backend web (local cache enabled)"
-"${COMPOSE[@]}" build backend web
+BUILD_SERVICES=(backend)
+if [[ "$DEPLOY_LEGACY_WEB" == true ]]; then BUILD_SERVICES+=(web); fi
+echo "[build] ${BUILD_SERVICES[*]} (local cache enabled)"
+"${COMPOSE[@]}" build "${BUILD_SERVICES[@]}"
 
 # --no-build prevents Compose from triggering an implicit rebuild. Compose uses
-# already-present immutable infrastructure images and the two images built above.
-echo "[up] postgres redis minio backend web"
-SERVICES=(postgres redis minio backend web)
+# already-present immutable infrastructure images and the application images built above.
+echo "[up] postgres redis minio backend"
+SERVICES=(postgres redis minio backend)
+if [[ "$DEPLOY_LEGACY_WEB" == true ]]; then SERVICES+=(web); fi
 if [[ "$ENABLE_OBSERVABILITY" == "true" ]]; then
   SERVICES+=(prometheus tempo loki alloy grafana)
 fi
@@ -167,9 +173,10 @@ for ((i=1; i<=60; i++)); do
   sleep 2
 done
 curl -fsS http://127.0.0.1:23333/healthz >/dev/null
-curl -fsS \
-  -H "Host: mianba.vip" \
-  "http://127.0.0.1:${WEB_HTTP_PORT:-80}/actuator/health" >/dev/null
+if [[ "$DEPLOY_LEGACY_WEB" == true ]]; then
+  curl -fsS -H "Host: mianba.vip" \
+    "http://127.0.0.1:${WEB_HTTP_PORT:-80}/actuator/health" >/dev/null
+fi
 
 if [[ "$ENABLE_OBSERVABILITY" == "true" ]]; then
   curl -fsS http://127.0.0.1:23334/actuator/prometheus | grep -F 'mianba_async_jobs' >/dev/null

@@ -1,4 +1,5 @@
-# 面霸生产环境：PostgreSQL、Redis、MinIO、Spring Boot 后端和 Web 前端。
+# 后端机 103.236.92.40：PostgreSQL、Redis、MinIO、Spring Boot。
+# 前端由 mianba-web/deploy/deploy-web.sh 发布到 106.14.143.151。
 # PostgreSQL、Redis、MinIO 只允许从服务器本机或 Compose 内网访问。
 # 管理端连接数据库请使用 SSH 隧道，不要把基础设施端口直接暴露到公网。
 services:
@@ -115,11 +116,12 @@ services:
       minio:
         condition: service_healthy
 
-  # Web 静态服务：nginx 服务 web-image/web 静态树（官网落地页 + /app SPA + /download APK）。
-  # 构建上下文是【部署机上的】web-image/ 目录：SPA 由 mianba-web 仓库的 deploy-web.sh
-  # 上传到 web-image/web/app，官网由本仓库 deploy-local.sh 上传，均不在镜像内构建前端。
-  # Dockerfile 由 deploy-local.sh 同步为 web-image/Dockerfile（源：deploy/web-image.Dockerfile）。
+  # 旧机过渡入口或同机回退，构建上下文为部署机已有的 web-image/。
+  # 当前过渡配置为 deploy/nginx-container-entry.conf；同机回退配置为 deploy/nginx.conf。
+  # 前后端发布脚本不再上传此静态树，Dockerfile 与上下文由运维按需准备。
   web:
+    # 仅供回退到旧同机部署：docker compose --profile legacy-web ...
+    profiles: [legacy-web]
     build:
       context: ./web-image
       dockerfile: Dockerfile
