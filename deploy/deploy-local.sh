@@ -80,10 +80,10 @@ retry() {
   for ((attempt=1; attempt<=8; attempt++)); do
     if "$@"; then return 0; else code=$?; fi
     if ((attempt == 8)); then
-      echo "❌ $label 失败（8 次尝试，最后退出码 $code）" >&2
+      echo "❌ $label 失败（8 次尝试，最后退出码 ${code}）" >&2
       return "$code"
     fi
-    echo "   ⚠ $label 暂时失败（退出码 $code），${attempt}/8，稍后重试" >&2
+    echo "   ⚠ $label 暂时失败（退出码 ${code}），${attempt}/8，稍后重试" >&2
     sleep "$((attempt * 5))"
   done
 }
@@ -131,8 +131,12 @@ JAR_TARGET="$DEPLOY_DIR/backend/app.jar"
 JAR_PREVIOUS="$DEPLOY_DIR/backend/app.jar.previous"
 
 # 上次可能已传完整文件，但 scp/SSH 的最终回执丢失；先校验，避免再传 184 MB。
+# 另：若服务器正式 jar 已是本次构建产物（如仅改 sidecar/脚本后重跑），整段跳过。
+TARGET_SHA="$(retry "检查服务器正式 jar" remote_sha "$JAR_TARGET")"
 STAGED_SHA="$(retry "检查服务器暂存 jar" remote_sha "$JAR_STAGE")"
-if [ "$STAGED_SHA" = "$JAR_SHA" ]; then
+if [ "$TARGET_SHA" = "$JAR_SHA" ]; then
+  echo "   ✓ 服务器 jar 已是本次构建产物，跳过上传"
+elif [ "$STAGED_SHA" = "$JAR_SHA" ]; then
   echo "   ✓ 暂存 jar 已完整，跳过重复上传"
 else
   UPLOAD_VERIFIED=false
@@ -161,17 +165,34 @@ echo "   ✓ backend/app.jar"
   "mv -f '$DEPLOY_DIR/deploy-prod.sh.uploading' '$DEPLOY_DIR/deploy-prod.sh'"
 echo "   ✓ deploy-prod.sh"
 
+# kg-forge 增量覆盖文件：不动服务器 legacy compose，以第二 -f 文件合并进部署
+"${SCP[@]}" deploy/docker-compose.kgforge.yml "$REMOTE:$DEPLOY_DIR/docker-compose.kgforge.yml"
+echo "   ✓ docker-compose.kgforge.yml（覆盖文件）"
+
+# kg-forge 源码树：服务器 compose 以 ./kg-forge 为构建上下文，随部署同步
+# （只传源码与 Dockerfile，排除缓存/虚拟环境；重复部署是幂等覆盖）
+if [ -d kg-forge ]; then
+  tar --exclude=.git --exclude=__pycache__ --exclude='*.egg-info' \
+      --exclude=.venv --exclude=.pytest_cache -C kg-forge -czf - . | \
+    "${SSH[@]}" "$REMOTE" "mkdir -p '$DEPLOY_DIR/kg-forge' && tar -xzf - -C '$DEPLOY_DIR/kg-forge'"
+  echo "   ✓ kg-forge/（sidecar 源码）"
+else
+  echo "   ⚠ 仓库根目录未找到 kg-forge/，跳过 sidecar 源码同步" >&2
+fi
+
 # ---------- 4/5 服务器执行部署 ----------
 step "4/5 服务器执行部署（PG 备份 → docker 构建/重启 → 健康检查，约 1~3 分钟）"
 "$SSH_BIN" -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
     -o ServerAliveInterval=30 -p "$SSH_PORT" "$REMOTE" \
-  "export DEPLOY_DIR='$DEPLOY_DIR' COMPOSE_FILE='$DEPLOY_DIR/docker-compose.yml' ENABLE_OBSERVABILITY='$ENABLE_OBSERVABILITY'; \
+  "export DEPLOY_DIR='$DEPLOY_DIR' COMPOSE_FILE='$DEPLOY_DIR/docker-compose.yml:$DEPLOY_DIR/docker-compose.kgforge.yml' ENABLE_OBSERVABILITY='$ENABLE_OBSERVABILITY'; \
    chmod +x '$DEPLOY_DIR/deploy-prod.sh'; bash '$DEPLOY_DIR/deploy-prod.sh'"
 
 # ---------- 5/5 健康检查 ----------
-step "5/5 复核后端健康（http://$SSH_HOST:23333/healthz）"
+# backend 已默认只绑服务器回环（BACKEND_BIND_ADDRESS=127.0.0.1），
+# 本机无法直连 23333，改经 SSH 在服务器本机复核。
+step "5/5 复核后端健康（服务器本机 127.0.0.1:23333/healthz，经 SSH）"
 sleep 3
-HEALTH="$(curl -s --max-time 20 "http://$SSH_HOST:23333/healthz" 2>/dev/null || true)"
+HEALTH="$("${SSH[@]}" "$REMOTE" "curl -s --max-time 20 http://127.0.0.1:23333/healthz" 2>/dev/null || true)"
 if echo "$HEALTH" | grep -q '"status":"UP"'; then
   echo "✅ 部署成功，服务器后端健康：$HEALTH"
 else

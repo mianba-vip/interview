@@ -12,6 +12,10 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "langgraph>=0.2.60,<0.4",
     "langgraph-checkpoint-postgres>=2.0",
+    # 显式声明 binary 轮子：镜像 python:3.12-slim 无系统 libpq，
+    # 且新版 langgraph-checkpoint-postgres 不再自动携带 psycopg[binary]，
+    # 缺它会在启动时 ImportError: no pq wrapper available（2026-10-20 线上教训）。
+    "psycopg[binary]>=3.1",
     "openai>=1.40",
     "pydantic>=2.7",
     "pydantic-settings>=2.2",

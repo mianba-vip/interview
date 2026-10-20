@@ -91,7 +91,7 @@ class ForgeState(TypedDict, total=False):
     """图状态。proposals 用 operator.add 归并——并行分支（Send）各自追加。"""
 
     req: dict                          # ForgeRequest 除 llm 外的字段（key 绝不入状态）
-    plan: list[dict]                   # TopicPlan.model_dump 列表
+    topics: list[dict]                 # TopicPlan.model_dump 列表（键不叫 plan：langgraph 禁止与节点名重名）
     branch: dict                       # Send 播种的当前支线上下文（topic 计划项）
     proposals: Annotated[list[dict], operator.add]
     status: str                        # planning/forging/awaiting_review/approved/rejected/failed

@@ -336,7 +336,7 @@ details.raw pre {
       <div class="field">
         <label for="llmTemp">temperature</label>
         <input type="number" id="llmTemp" min="0" max="2" step="0.1" value="0.7">
-        <div class="hint">全留空则用服务端兜底配置(FORGE_API_KEY)。key 只进 sidecar 进程内存,不落 checkpoint。</div>
+        <div class="hint">全留空则用服务端兜底配置(FORGE_API_KEY)。填过一次点「开始锻造」即保存在本浏览器,下次自动带出。key 只进 sidecar 进程内存,不落 checkpoint。</div>
       </div>
     </section>
 
@@ -819,13 +819,17 @@ async function startForge() {
     layer_budget: +$("budget").value || 50,
     existing_names: $("existing").value.split("\n").map((s) => s.trim()).filter(Boolean),
   };
-  const key = $("llmKey").value.trim();
-  if (key) {
+  const llmBase = $("llmBase").value.trim();
+  const llmKey = $("llmKey").value.trim();
+  const llmModel = $("llmModel").value.trim();
+  const llmTemp = +$("llmTemp").value || 0.7;
+  store.set("kgf_llm", { base_url: llmBase, api_key: llmKey, model: llmModel, temperature: llmTemp });  // 随锻造保存,下次自动带出
+  if (llmKey) {
     body.llm = {
-      base_url: $("llmBase").value.trim() || "https://api.deepseek.com",
-      api_key: key,
-      model: $("llmModel").value.trim() || "deepseek-chat",
-      temperature: +$("llmTemp").value || 0.7,
+      base_url: llmBase || "https://api.deepseek.com",
+      api_key: llmKey,
+      model: llmModel || "deepseek-chat",
+      temperature: llmTemp,
     };
   }
   try {
@@ -901,6 +905,11 @@ function showError(msg) {
    事件绑定与启动
    ================================================================ */
 $("secret").value = state.secret;
+const savedLlm = store.get("kgf_llm", {});
+if (savedLlm.base_url) $("llmBase").value = savedLlm.base_url;
+if (savedLlm.api_key) $("llmKey").value = savedLlm.api_key;
+if (savedLlm.model) $("llmModel").value = savedLlm.model;
+if (savedLlm.temperature != null) $("llmTemp").value = savedLlm.temperature;
 $("secret").addEventListener("change", () => { state.secret = $("secret").value; store.set("kgf_secret", state.secret); });
 $("testSecret").addEventListener("click", testSecret);
 $("budgetRange").addEventListener("input", () => { $("budget").value = $("budgetRange").value; });

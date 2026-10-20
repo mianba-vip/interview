@@ -65,7 +65,7 @@ def plan_node(state: ForgeState) -> dict:
             if len(topics) * 3 > int(req.get("layer_budget", 50)) * 2:
                 last_error = "主题数相对预算过多（每主题至少 3 个概念）"
                 continue
-            return {"plan": [t.model_dump() for t in topics], "status": "forging"}
+            return {"topics": [t.model_dump() for t in topics], "status": "forging"}
         except Exception as e:  # noqa: BLE001
             last_error = str(e)
             log.warning("plan 第 %s 轮失败：%s", round_no, e)
@@ -77,9 +77,10 @@ class _PlanBatch(BaseModel):
 
 
 def _fan_out_topics(state: ForgeState) -> list[Send]:
-    """plan → 每个主题一条并行支线（Send 播种 branch 上下文，主题数随 req 带给支线分摊预算）。"""
-    req = {**state["req"], "_topic_count": len(state["plan"])}
-    return [Send("forge_topic", {"req": req, "branch": plan_item}) for plan_item in state["plan"]]
+    """plan → 每个主题一条并行支线（Send 播种 branch 上下文，主题数随 req 带给支线分摊预算）。
+    注意:状态键叫 topics 而非 plan——新版 langgraph 禁止节点名与状态键重名。"""
+    req = {**state["req"], "_topic_count": len(state["topics"])}
+    return [Send("forge_topic", {"req": req, "branch": topic_item}) for topic_item in state["topics"]]
 
 
 def forge_topic_node(state: ForgeState) -> dict:
