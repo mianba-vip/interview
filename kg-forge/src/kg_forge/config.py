@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     forge_base_url: str = "https://api.deepseek.com"
     forge_model: str = "deepseek-chat"
 
+    # checkpoint 后端：postgres（默认，与生产一致，断点续跑）/ memory（开发测试，
+    # 免 PG 起服务，重启即失）。仅影响本进程存档方式，API 契约不变。
+    forge_checkpoint: str = "postgres"
+
     # HTTP 端口（compose 内网）
     forge_port: int = 8100
 

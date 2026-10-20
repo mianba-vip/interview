@@ -28,6 +28,9 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+kg_forge = ["playground.html"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 

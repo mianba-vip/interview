@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.types import Command
 
@@ -36,8 +38,19 @@ _ACTIVE_THREADS: set = set()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """AsyncPostgresSaver 持有异步连接，必须在 async with 生命周期内使用；
-    setup() 是协程（自建 ckpt_* 表，幂等），随服务启动执行一次。"""
+    setup() 是协程（自建 ckpt_* 表，幂等），随服务启动执行一次。
+
+    FORGE_CHECKPOINT=memory：开发测试模式（免 Postgres），checkpoint 只驻
+    进程内存——重启即失、无断点续跑，API 契约不变。生产不要用。
+    """
     global GRAPH
+    if settings.forge_checkpoint == "memory":
+        from langgraph.checkpoint.memory import InMemorySaver
+
+        log.warning("FORGE_CHECKPOINT=memory：开发模式，checkpoint 不落库，重启即失")
+        GRAPH = build_graph(InMemorySaver())
+        yield
+        return
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
     async with AsyncPostgresSaver.from_conn_string(settings.forge_db_url) as saver:
@@ -61,6 +74,26 @@ app = FastAPI(title="kg-forge", lifespan=lifespan)
 @app.get("/healthz")
 async def healthz() -> dict:
     return {"ok": True}
+
+
+# ------------------------------------------------------------------ 测试台
+
+_PLAYGROUND_HTML = Path(__file__).with_name("playground.html")
+
+
+@app.get("/", include_in_schema=False)
+async def index() -> RedirectResponse:
+    return RedirectResponse("/playground")
+
+
+@app.get("/playground", include_in_schema=False)
+async def playground() -> HTMLResponse:
+    """开发测试台：单文件静态页，由本服务同源提供（免 CORS）。
+
+    页面本身不含任何数据，所有 /runs 查询仍需 X-Forge-Secret——与 API
+    安全模型一致；仅用于本地/内网评估锻造质量，compose 不对公网发布。
+    """
+    return HTMLResponse(_PLAYGROUND_HTML.read_text(encoding="utf-8"))
 
 
 @app.post("/runs", status_code=202)

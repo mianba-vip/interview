@@ -59,18 +59,22 @@ START → plan ──Send 并行播种──► forge_topic(每主题一条支�
 
 ## 部署
 
-docker-compose（本目录已并入 interview 仓库，服务加进仓库根目录的 `docker-compose.prod.yml`）：
+已接入仓库根目录的 `docker-compose.prod.yml`（`kg-forge` 服务，不发布端口），
+`deploy-prod.sh` 会随 backend 一起构建/启动/健康检查。compose 中实际生效的配置：
 
 ```yaml
   kg-forge:
-    build: ./kg-forge         # 或镜像引用
+    build: ./kg-forge
     restart: unless-stopped
     environment:
-      FORGE_SECRET: ${APP_FORGE_SECRET:?}
+      FORGE_SECRET: ${APP_FORGE_SECRET:-change-me-forge-secret}   # 与 backend 的 APP_FORGE_SECRET 同源
       FORGE_DB_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     # 不发布端口：仅 compose 内网，backend 通过服务名 kg-forge:8100 访问
-    depends_on: [postgres]
+    depends_on:
+      postgres: { condition: service_healthy }
 ```
+
+服务器 `.env` 可选设置 `APP_FORGE_SECRET=<随机长串>`（backend 与 sidecar 自动一致）。
 
 ## 本地开发
 
@@ -79,6 +83,25 @@ pip install -e ".[dev]"
 export FORGE_DB_URL=postgresql://postgres:123456@localhost:5432/interview
 uvicorn kg_forge.api:app --port 8100
 pytest                      # 假 LLM + InMemorySaver，全链路含 interrupt/恢复
+```
+
+## 测试台（playground）
+
+起服务后浏览器打开 <http://localhost:8100/playground>（由 api.py 内嵌提供，
+同源调用 /runs，免 CORS）。用于在接入 interview 前直接评估锻造质量：
+
+- 填 `X-Forge-Secret`（与 `FORGE_SECRET` 一致）；BYOK 四项全留空则用服务端兜底配置；
+- 发起锻造 → 实时轮询流水线阶段 → 待审核时看「主题 × 层级」覆盖矩阵与提案卡片
+  （可按层级/主题筛选）→ 「批准/拒绝」验证 finalize 通道；
+- 编辑提案后落库是 Java 审核页的能力，此处只做整批批准/拒绝；
+- 页面打不开 sidecar 时自动进入演示模式（内置样例数据，仅预览界面）。
+
+免 Postgres 冒烟测试：`FORGE_CHECKPOINT=memory` 时 checkpoint 只驻进程内存
+（重启即失、无断点续跑），API 契约不变。**生产不要用**：
+
+```bash
+FORGE_CHECKPOINT=memory FORGE_SECRET=test-secret \
+FORGE_API_KEY=sk-xxx uvicorn kg_forge.api:app --port 8100
 ```
 
 ## 与 interview 后端的对接速查
