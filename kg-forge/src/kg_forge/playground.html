@@ -1,0 +1,925 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kg-forge 锻造测试台</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚒️</text></svg>">
+<style>
+/* ============================================================
+   kg-forge 锻造测试台
+   材质语言:铸铁暖黑 + 炉火橙。层级色阶按「金属温度」递进:
+   L1 淬火蓝 → L2 青铜 → L3 黄铜 → L4 炽橙 → L5 赤红。
+   炉火只烧一处:动画仅用于活动阶段的脉冲。
+   ============================================================ */
+:root {
+  --bg: #141210;
+  --panel: #1c1916;
+  --panel-2: #211d19;
+  --line: #332d26;
+  --line-soft: #29241e;
+  --ink: #d9d2c6;
+  --ink-dim: #968c7e;
+  --ink-faint: #6b6357;
+  --ember: #e8632a;
+  --ember-deep: #b44718;
+  --ember-soft: rgba(232, 99, 42, .14);
+  --brass: #d1a24a;
+  --ok: #8fae6f;
+  --bad: #c05548;
+  --l1: #7d95ad;
+  --l2: #a5a06b;
+  --l3: #d1a24a;
+  --l4: #e0762f;
+  --l5: #cf4a3a;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background:
+    radial-gradient(1200px 500px at 70% -10%, rgba(232, 99, 42, .05), transparent 60%),
+    var(--bg);
+  color: var(--ink);
+  font: 14px/1.65 -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  min-height: 100vh;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+input, textarea, select { font: inherit; color: var(--ink); }
+:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; border-radius: 3px; }
+
+/* ---------- 顶栏 ---------- */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 22px; border-bottom: 1px solid var(--line);
+  background: rgba(20, 18, 16, .92); position: sticky; top: 0; z-index: 5;
+  backdrop-filter: blur(6px);
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-mark {
+  width: 36px; height: 36px; display: grid; place-items: center;
+  background: linear-gradient(160deg, #2a241e, #1c1916);
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 18px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+}
+.brand-text { line-height: 1.25; }
+.brand-text strong { font-size: 16px; letter-spacing: .02em; display: block; }
+.brand-text span { color: var(--ink-dim); font-size: 12px; }
+.conn { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-dim); }
+.conn-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-faint); }
+.conn.ok .conn-dot { background: var(--ok); box-shadow: 0 0 6px rgba(143, 174, 111, .6); }
+.conn.bad .conn-dot { background: var(--bad); }
+.conn.warn .conn-dot { background: var(--brass); }
+.demo-badge {
+  display: none; margin-left: 10px; padding: 2px 10px; font-size: 12px;
+  border: 1px dashed var(--brass); border-radius: 999px; color: var(--brass);
+}
+body.demo .demo-badge { display: inline-block; }
+
+/* ---------- 布局 ---------- */
+.layout { display: grid; grid-template-columns: 330px 1fr; gap: 18px; max-width: 1280px; margin: 18px auto; padding: 0 18px; align-items: start; }
+@media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+
+/* ---------- 左侧控制轨 ---------- */
+.rail { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 76px; }
+@media (max-width: 960px) { .rail { position: static; } }
+.card {
+  background: var(--panel); border: 1px solid var(--line-soft);
+  border-radius: 8px; padding: 14px 16px;
+}
+.card h3 {
+  margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--ink-dim);
+  display: flex; align-items: center; gap: 8px;
+}
+.card h3::before { content: ""; width: 3px; height: 14px; background: var(--ember-deep); border-radius: 2px; }
+.field { margin-bottom: 10px; }
+.field:last-child { margin-bottom: 0; }
+.field label { display: block; font-size: 12px; color: var(--ink-dim); margin-bottom: 4px; }
+.field input[type="text"], .field input[type="password"], .field input[type="number"],
+.field textarea, .field select {
+  width: 100%; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 5px; padding: 7px 10px; font-size: 13px;
+}
+.field textarea { resize: vertical; min-height: 54px; }
+.field input:focus, .field textarea:focus, .field select:focus { border-color: var(--ember-deep); outline: none; }
+.hint { font-size: 12px; color: var(--ink-faint); margin-top: 4px; }
+.range-row { display: flex; align-items: center; gap: 10px; }
+.range-row input[type="range"] { flex: 1; accent-color: var(--ember); }
+.range-row input[type="number"] { width: 74px; }
+.btn {
+  border: 1px solid var(--line); background: var(--panel-2); border-radius: 6px;
+  padding: 8px 14px; font-size: 13px; transition: background .15s, border-color .15s;
+}
+.btn:hover { border-color: var(--ink-faint); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-primary {
+  width: 100%; background: linear-gradient(180deg, var(--ember), var(--ember-deep));
+  border: 1px solid var(--ember-deep); color: #fff7ef; font-weight: 600;
+  padding: 10px; font-size: 14px; letter-spacing: .06em;
+}
+.btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.btn-ok { background: rgba(143, 174, 111, .14); border-color: rgba(143, 174, 111, .5); color: var(--ok); }
+.btn-ok:hover:not(:disabled) { background: rgba(143, 174, 111, .24); }
+.btn-bad { background: transparent; border-color: rgba(192, 85, 72, .45); color: var(--bad); }
+.btn-bad:hover:not(:disabled) { background: rgba(192, 85, 72, .12); }
+.btn-ghost { background: transparent; }
+
+/* 历史列表 */
+.hist { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow: auto; }
+.hist li {
+  display: flex; align-items: center; gap: 8px; padding: 7px 8px;
+  border-radius: 5px; font-size: 13px; cursor: pointer;
+}
+.hist li:hover { background: var(--panel-2); }
+.hist .h-topic { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist .h-time { color: var(--ink-faint); font-size: 11px; }
+.hist .h-del { border: 0; background: none; color: var(--ink-faint); padding: 0 2px; font-size: 13px; }
+.hist .h-del:hover { color: var(--bad); }
+.hist-empty { color: var(--ink-faint); font-size: 12px; margin: 4px 0; }
+
+/* ---------- 右侧观察台 ---------- */
+.stage-view { display: flex; flex-direction: column; gap: 16px; min-height: 60vh; }
+
+.run-meta {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  font-size: 13px; color: var(--ink-dim);
+}
+.run-meta .rid { font-family: var(--mono); font-size: 12px; color: var(--ink-faint); }
+.chip {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: 12px; border: 1px solid var(--line);
+}
+.chip.run { color: var(--ember); border-color: rgba(232, 99, 42, .5); background: var(--ember-soft); }
+.chip.review { color: var(--brass); border-color: rgba(209, 162, 74, .5); background: rgba(209, 162, 74, .1); }
+.chip.ok { color: var(--ok); border-color: rgba(143, 174, 111, .5); background: rgba(143, 174, 111, .1); }
+.chip.bad { color: var(--bad); border-color: rgba(192, 85, 72, .5); background: rgba(192, 85, 72, .1); }
+
+/* 流水线阶段器 */
+.pipe-wrap { background: var(--panel); border: 1px solid var(--line-soft); border-radius: 8px; padding: 18px 20px 14px; }
+.pipe { list-style: none; display: flex; margin: 0; padding: 0; }
+.p-node { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 7px; position: relative; }
+.p-node::before {
+  content: ""; position: absolute; top: 6px; left: calc(-50% + 9px); right: calc(50% + 9px);
+  height: 2px; background: var(--line);
+}
+.p-node:first-child::before { display: none; }
+.p-node.done::before, .p-node.active::before { background: var(--ember-deep); }
+.p-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--panel-2); border: 2px solid var(--line);
+  position: relative; z-index: 1;
+}
+.p-node.done .p-dot { background: var(--ember-deep); border-color: var(--ember-deep); }
+.p-node.active .p-dot {
+  background: var(--ember); border-color: var(--ember);
+  animation: emberPulse 1.6s ease-in-out infinite;
+}
+.p-label { font-size: 12px; color: var(--ink-faint); }
+.p-node.done .p-label, .p-node.active .p-label { color: var(--ink); }
+.p-node.active .p-label { color: var(--ember); }
+.pipe.dead .p-dot { background: var(--panel-2); border-color: var(--line); animation: none; }
+@keyframes emberPulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(232, 99, 42, .28); }
+  50% { box-shadow: 0 0 0 9px rgba(232, 99, 42, .07); }
+}
+
+/* 空态引导 */
+.intro { background: var(--panel); border: 1px solid var(--line-soft); border-radius: 8px; padding: 30px 28px; }
+.intro h2 { margin: 0 0 6px; font-size: 19px; font-weight: 700; }
+.intro p { color: var(--ink-dim); margin: 0 0 14px; max-width: 62ch; }
+.intro ol { margin: 0; padding-left: 0; list-style: none; counter-reset: step; }
+.intro ol li {
+  counter-increment: step; padding: 10px 0 10px 40px; position: relative;
+  border-top: 1px solid var(--line-soft); color: var(--ink-dim); max-width: 62ch;
+}
+.intro ol li::before {
+  content: counter(step, cjk-ideographic); position: absolute; left: 2px; top: 10px;
+  width: 24px; height: 24px; display: grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 50%; font-size: 12px; color: var(--ember);
+}
+.intro b { color: var(--ink); font-weight: 600; }
+
+/* 覆盖矩阵 */
+.matrix-card { background: var(--panel); border: 1px solid var(--line-soft); border-radius: 8px; padding: 14px 16px; }
+.matrix-card h3 { margin: 0 0 10px; font-size: 13px; color: var(--ink-dim); font-weight: 600; }
+.matrix { width: 100%; border-collapse: collapse; font-size: 13px; }
+.matrix th, .matrix td { padding: 7px 10px; text-align: center; border-bottom: 1px solid var(--line-soft); }
+.matrix th { color: var(--ink-dim); font-weight: 500; font-size: 12px; }
+.matrix th:first-child, .matrix td:first-child { text-align: left; color: var(--ink); }
+.matrix td:first-child { font-weight: 600; }
+.matrix .cell { border-radius: 4px; display: inline-block; min-width: 30px; padding: 1px 6px; }
+.matrix .zero { color: var(--ink-faint); }
+.matrix tr:last-child td { border-bottom: 0; }
+.matrix tfoot td { border-top: 1px solid var(--line); color: var(--ink-dim); }
+.dup-note { margin-top: 8px; font-size: 12px; color: var(--ink-faint); }
+.dup-note b { color: var(--ink-dim); font-weight: 600; }
+
+/* 筛选与操作 */
+.review-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.layer-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.lf {
+  border: 1px solid var(--line); background: transparent; border-radius: 999px;
+  padding: 3px 12px; font-size: 12px; color: var(--ink-dim);
+}
+.lf.on { color: var(--ink); border-color: var(--ink-faint); background: var(--panel-2); }
+.lf .n { font-family: var(--mono); font-size: 11px; margin-left: 4px; color: var(--ink-faint); }
+.topic-sel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; font-size: 13px; max-width: 180px; }
+.review-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+.count-note { font-size: 12px; color: var(--ink-faint); }
+
+/* 提案卡片 */
+.groups { display: flex; flex-direction: column; gap: 12px; }
+.topic-group { background: var(--panel); border: 1px solid var(--line-soft); border-radius: 8px; overflow: hidden; }
+.tg-head {
+  display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+  background: var(--panel-2); cursor: pointer; user-select: none; font-size: 13px;
+}
+.tg-head b { font-size: 14px; }
+.tg-head .cnt { color: var(--ink-faint); font-size: 12px; }
+.tg-head .arrow { margin-left: auto; color: var(--ink-faint); transition: transform .2s; }
+.topic-group.collapsed .arrow { transform: rotate(-90deg); }
+.topic-group.collapsed .cards { display: none; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 1px; background: var(--line-soft); }
+.prop {
+  background: var(--panel); padding: 13px 16px; display: flex; flex-direction: column; gap: 7px;
+}
+.prop-head { display: flex; align-items: flex-start; gap: 9px; }
+.layer-tag {
+  flex: none; font-size: 11px; padding: 2px 8px; border-radius: 4px; margin-top: 2px;
+  font-weight: 600; letter-spacing: .03em;
+}
+.layer-tag.l1 { color: var(--l1); background: rgba(125, 149, 173, .13); border: 1px solid rgba(125, 149, 173, .35); }
+.layer-tag.l2 { color: var(--l2); background: rgba(165, 160, 107, .13); border: 1px solid rgba(165, 160, 107, .35); }
+.layer-tag.l3 { color: var(--l3); background: rgba(209, 162, 74, .13); border: 1px solid rgba(209, 162, 74, .35); }
+.layer-tag.l4 { color: var(--l4); background: rgba(224, 118, 47, .13); border: 1px solid rgba(224, 118, 47, .35); }
+.layer-tag.l5 { color: var(--l5); background: rgba(207, 74, 58, .13); border: 1px solid rgba(207, 74, 58, .35); }
+.prop h4 { margin: 0; font-size: 14.5px; font-weight: 650; line-height: 1.45; }
+.prop .desc { margin: 0; color: var(--ink-dim); font-size: 13px; }
+.subs { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 0; padding: 0; list-style: none; }
+.subs li {
+  font-size: 11.5px; color: var(--ink-faint); border: 1px solid var(--line-soft);
+  background: var(--bg); border-radius: 4px; padding: 1px 8px;
+}
+
+/* 终态与提示 */
+.banner { border-radius: 8px; padding: 16px 20px; border: 1px solid; font-size: 14px; }
+.banner.ok { border-color: rgba(143, 174, 111, .45); background: rgba(143, 174, 111, .09); }
+.banner.bad { border-color: rgba(192, 85, 72, .45); background: rgba(192, 85, 72, .09); }
+.banner.mute { border-color: var(--line); background: var(--panel); color: var(--ink-dim); }
+.banner b { font-size: 15px; }
+.banner .sub { display: block; margin-top: 4px; color: var(--ink-dim); font-size: 13px; }
+.alert {
+  border: 1px solid rgba(192, 85, 72, .5); background: rgba(192, 85, 72, .1);
+  border-radius: 6px; padding: 9px 14px; font-size: 13px; color: var(--bad);
+}
+.err-text { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); word-break: break-all; }
+details.raw { border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel); }
+details.raw summary { padding: 9px 16px; cursor: pointer; font-size: 12px; color: var(--ink-faint); }
+details.raw pre {
+  margin: 0; padding: 4px 16px 14px; overflow: auto; max-height: 340px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim);
+}
+.forging-note { color: var(--ink-dim); font-size: 13px; display: flex; align-items: center; gap: 10px; }
+.spinner {
+  width: 14px; height: 14px; border-radius: 50%; flex: none;
+  border: 2px solid var(--line); border-top-color: var(--ember);
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">⚒️</span>
+    <div class="brand-text"><strong>kg-forge</strong><span>知识图谱锻造测试台</span></div>
+  </div>
+  <div class="conn" id="conn">
+    <span class="conn-dot" id="connDot"></span><span id="connText">检测 sidecar…</span>
+    <span class="demo-badge" id="demoBadge">演示数据 · 未连接 sidecar</span>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ============ 左:控制轨 ============ -->
+  <aside class="rail">
+    <section class="card">
+      <h3>连接</h3>
+      <div class="field">
+        <label for="secret">X-Forge-Secret(与 FORGE_SECRET 一致)</label>
+        <input type="password" id="secret" placeholder="change-me-forge-secret" autocomplete="off">
+        <div class="hint"><button class="btn btn-ghost" id="testSecret" style="padding:2px 6px;">测试密钥</button>
+          <span id="secretResult"></span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>LLM(BYOK,选填)</h3>
+      <div class="field">
+        <label for="llmBase">base_url</label>
+        <input type="text" id="llmBase" placeholder="https://api.deepseek.com">
+      </div>
+      <div class="field">
+        <label for="llmKey">api_key</label>
+        <input type="password" id="llmKey" placeholder="sk-…" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="llmModel">model</label>
+        <input type="text" id="llmModel" placeholder="deepseek-chat">
+      </div>
+      <div class="field">
+        <label for="llmTemp">temperature</label>
+        <input type="number" id="llmTemp" min="0" max="2" step="0.1" value="0.7">
+        <div class="hint">全留空则用服务端兜底配置(FORGE_API_KEY)。key 只进 sidecar 进程内存,不落 checkpoint。</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>锻造参数</h3>
+      <div class="field">
+        <label for="topic">学习方向 *</label>
+        <textarea id="topic" placeholder="如:JVM 调优,准备秋招"></textarea>
+      </div>
+      <div class="field">
+        <label for="goal">目标(选填)</label>
+        <input type="text" id="goal" placeholder="如:秋招大厂后台">
+      </div>
+      <div class="field">
+        <label for="budget">概念总数预算</label>
+        <div class="range-row">
+          <input type="range" id="budgetRange" min="10" max="120" step="5" value="50">
+          <input type="number" id="budget" min="10" max="120" value="50">
+        </div>
+      </div>
+      <div class="field">
+        <label for="existing">已有概念名(选填,每行一个,用于去重)</label>
+        <textarea id="existing" placeholder="如:分代假说"></textarea>
+      </div>
+      <button class="btn btn-primary" id="startBtn">开 始 锻 造</button>
+    </section>
+
+    <section class="card">
+      <h3>历史</h3>
+      <ul class="hist" id="hist"></ul>
+      <p class="hist-empty" id="histEmpty">还没有锻造记录</p>
+    </section>
+  </aside>
+
+  <!-- ============ 右:观察台 ============ -->
+  <section class="stage-view" id="stageView"></section>
+</main>
+
+<script>
+"use strict";
+/* ================================================================
+   状态与工具
+   ================================================================ */
+const $ = (id) => document.getElementById(id);
+const LAYERS = { 1: "概念", 2: "机制", 3: "实现", 4: "权衡", 5: "故障" };
+const LAYER_KEYS = [1, 2, 3, 4, 5];
+const FINAL = new Set(["approved", "rejected", "failed"]);
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 预览环境无 localStorage */ } },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} },
+};
+
+const state = {
+  secret: store.get("kgf_secret", ""),
+  conn: "unknown",          // unknown | ok | bad(不可达) | warn(密钥无效)
+  demo: false,              // sidecar 不可达时的界面演示模式
+  run: null,                // { id, topic, status, startedAt, endedAt }
+  review: null,             // { concepts, report } 最近一次待审核载荷
+  lastRaw: null,
+  filterLayer: 0,           // 0=全部
+  filterTopic: "",          // ""=全部
+  collapsed: new Set(),
+  confirm: null,            // 两段式确认:'approve'|'reject'|null
+  confirmTimer: null,
+  pollTimer: null,
+  clockTimer: null,
+  history: store.get("kgf_history", []),
+};
+
+class ApiError extends Error {
+  constructor(status, msg) { super(msg); this.status = status; }
+}
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function fmtElapsed(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+function uid() {
+  const r = (window.crypto && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, "") : Date.now() + String(Math.random()).slice(2);
+  return "pg-" + r.slice(0, 16);
+}
+
+/* ================================================================
+   API(真实 / 演示二选一)
+   ================================================================ */
+async function api(method, path, body) {
+  if (state.demo) return demoApi(method, path, body);
+  let res;
+  try {
+    res = await fetch(path, {
+      method,
+      headers: { "Content-Type": "application/json", "X-Forge-Secret": state.secret || "" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    state.conn = "bad"; renderConn();
+    throw new ApiError(0, "sidecar 不可达:服务起了吗?(uvicorn kg_forge.api:app)");
+  }
+  if (res.status === 401) throw new ApiError(401, "密钥无效(401):X-Forge-Secret 与服务端 FORGE_SECRET 不一致");
+  if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}:${(await res.text()).slice(0, 180)}`);
+  return res.json();
+}
+
+/* ---------- 演示模式:连接不可达时接管 fetch,数据为手工构造的样例 ---------- */
+const DEMO_REVIEW = (() => {
+  const C = (name, description, topic, layer, subs) => ({ name, description, topic, layer, sub_points: subs, source: "model" });
+  const concepts = [
+    C("Java 内存区域划分", "JVM 运行时数据区的构成与各自作用,堆/栈/元空间边界是面试第一题", "内存模型", 1, ["堆与栈的职责划分", "元空间与方法区的关系", "程序计数器的作用", "线程私有三区"]),
+    C("JVM 内存模型 JMM", "主内存与工作内存的抽象,可见性/原子性/有序性问题的根源", "内存模型", 2, ["happens-before 规则", "内存屏障的作用", "数据竞争的典型场景", "volatile 的内存语义"]),
+    C("堆内存分配策略", "TLAB、对象晋升年龄与 -XX:MaxTenuringThreshold 等关键参数", "内存模型", 3, ["TLAB 快速分配流程", "对象年龄与晋升", "常用分配参数", "大对象直接进老年代"]),
+    C("栈深与 OOM 权衡", "-Xss 大小与递归深度、线程数的取舍,栈溢出的调优思路", "内存模型", 4, ["栈帧结构与开销", "Xss 与线程数上限", "StackOverflowError 排查", "虚拟机栈 OOM"]),
+    C("分代假说", "弱分代/强分代假说,几乎所有收集器的理论起点", "垃圾回收", 1, ["弱分代假说内容", "强分代假说内容", "跨代引用的解决"]),
+    C("可达性分析", "从 GC Roots 出发判定对象存活,与引用计数法的差异", "垃圾回收", 2, ["GC Roots 的种类", "三色标记的原理", "漏标与写屏障", "安全点的作用"]),
+    C("垃圾回收算法", "标记-清除/复制/整理三种基础算法及其适用代", "垃圾回收", 2, ["三种算法的优缺点", "为什么新生代用复制", "标记整理的适用场景"]),
+    C("G1 的 Region 结构", "Region 化堆、CardTable 与 SATB 的实现要点", "垃圾回收", 3, ["Region 大小的确定", "RSet 的维护成本", "SATB 快照标记", "混合回收的触发"]),
+    C("CMS 与 G1 的取舍", "吞吐与延迟目标下的收集器选型边界", "垃圾回收", 4, ["CMS 的三色标记缺陷", "G1 的停顿预测模型", "ZGC 的着色指针", "选型决策树"]),
+    C("Full GC 频繁排查", "从 gc.log 到内存泄漏定位的完整排障路径", "垃圾回收", 5, ["gc.log 关键指标", "jstat 的代际观察", "heap dump 分析", "晋升失败与疏散失败"]),
+    C("类加载过程", "加载-验证-准备-解析-初始化五阶段各自发生什么", "类加载与 JIT", 1, ["静态变量赋值时机", "初始化触发条件", "双亲委派的入口"]),
+    C("双亲委派模型", "为什么需要双亲委派,打破它的合法场景", "类加载与 JIT", 2, ["委派链路", "SPI 与线程上下文类加载器", "热部署的实现原理"]),
+    C("JIT 编译阈值权衡", "-XX:CompileThreshold 与分层编译的性价比", "类加载与 JIT", 4, ["C1/C2 分层策略", "阈值与峰值性能", "逃逸分析的发生条件"]),
+  ];
+  const topic_layer = {};
+  for (const c of concepts) {
+    const t = (topic_layer[c.topic] = topic_layer[c.topic] || {});
+    const k = String(c.layer); t[k] = (t[k] || 0) + 1;
+  }
+  const report = { topic_layer, total: concepts.length, dropped_duplicate: 2, dropped_existing: 1 };
+  return { concepts, report };
+})();
+const demoState = { phase: "idle", decision: null };
+
+async function demoApi(method, path, body) {
+  await new Promise((r) => setTimeout(r, 260));
+  if (method === "POST" && path === "/runs") {
+    demoState.phase = "forging"; demoState.decision = null;
+    setTimeout(() => { demoState.phase = "awaiting_review"; }, 1600);   // 模拟起草耗时
+    return { run_id: body.run_id, accepted: true };
+  }
+  if (method === "GET" && path.startsWith("/runs/")) {
+    if (demoState.phase === "forging") return { status: "forging" };
+    if (demoState.phase === "awaiting_review") return { status: "awaiting_review", ...DEMO_REVIEW };
+    return { status: demoState.decision || "approved", error: null, coverage: DEMO_REVIEW.report };
+  }
+  if (method === "POST" && path.endsWith("/finalize")) {
+    demoState.decision = body.decision; demoState.phase = "final";
+    return { status: body.decision };
+  }
+  return {};
+}
+
+/* ================================================================
+   连接检测
+   ================================================================ */
+async function checkConn() {
+  if (state.demo) {
+    // 演示模式:后台持续尝试回连;通了就退出演示、清掉演示 run
+    try {
+      const res = await fetch("/healthz", { method: "GET" });
+      if (res.ok) {
+        state.demo = false; state.conn = "ok";
+        if (state.run && state.run.demo) {
+          stopPoll();
+          state.run = null; state.review = null; state.lastRaw = null;
+        }
+        renderConn(); renderStage();
+      }
+    } catch (e) { /* 仍不可达,继续演示 */ }
+    return;
+  }
+  try {
+    const res = await fetch("/healthz", { method: "GET" });
+    state.conn = res.ok ? "ok" : "warn";
+    renderConn();
+  } catch (e) {
+    state.conn = "bad";
+    state.demo = true;                       // 打不开 sidecar(如直接以文件方式预览)→ 演示模式
+    renderConn();
+    seedDemoRun();                           // 直接预演一条:锻造中 → 待审核(样例数据)
+  }
+}
+function seedDemoRun() {
+  if (state.run) return;
+  demoState.phase = "forging"; demoState.decision = null;
+  setTimeout(() => { demoState.phase = "awaiting_review"; }, 1600);
+  state.run = { id: "pg-demo-" + Date.now().toString(36), topic: "JVM 调优,准备秋招(演示)", status: "planning", startedAt: Date.now(), demo: true };
+  state.review = null; state.lastRaw = null;
+  renderStage();
+  startPoll();
+}
+async function testSecret() {
+  const el = $("secretResult");
+  el.textContent = "…"; el.style.color = "";
+  try {
+    await api("GET", "/runs/__conn_test__");
+    el.textContent = "✓ 密钥有效"; el.style.color = "var(--ok)";
+    state.conn = "ok"; renderConn();
+  } catch (e) {
+    el.textContent = "✗ " + e.message; el.style.color = "var(--bad)";
+  }
+}
+
+/* ================================================================
+   渲染:顶栏 / 历史
+   ================================================================ */
+function renderConn() {
+  const box = $("conn"), dot = $("connDot"), text = $("connText");
+  box.className = "conn " + (state.demo ? "warn" : state.conn === "ok" ? "ok" : state.conn === "warn" ? "warn" : "bad");
+  document.body.classList.toggle("demo", state.demo);
+  dot.className = "conn-dot";
+  text.textContent = state.demo ? "未连接(演示数据)"
+    : state.conn === "ok" ? "sidecar 已连通" : state.conn === "warn" ? "sidecar 异常" : "sidecar 不可达";
+}
+function chipClass(status) {
+  if (status === "awaiting_review") return "review";
+  if (status === "approved") return "ok";
+  if (status === "failed") return "bad";
+  if (status === "rejected") return "mute";
+  return "run";   // planning / forging / running / PENDING
+}
+function renderHistory() {
+  const ul = $("hist");
+  ul.innerHTML = state.history.map((h, i) => `
+    <li data-i="${i}">
+      <span class="h-topic" title="${esc(h.id)}">${esc(h.topic || h.id)}</span>
+      <span class="chip ${chipClass(h.status)}">${esc(h.status)}</span>
+      <span class="h-time">${esc(h.ts || "")}</span>
+      <button class="h-del" title="删除记录" aria-label="删除">×</button>
+    </li>`).join("");
+  $("histEmpty").style.display = state.history.length ? "none" : "block";
+}
+function histUpsert(run) {
+  if (run.demo) return;                      // 演示 run 不进历史
+  const h = state.history.find((x) => x.id === run.id);
+  const entry = { id: run.id, topic: run.topic, status: run.status, ts: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) };
+  if (h) Object.assign(h, entry); else state.history.unshift(entry);
+  state.history = state.history.slice(0, 20);
+  store.set("kgf_history", state.history);
+  renderHistory();
+}
+function histRemove(id) {
+  state.history = state.history.filter((h) => h.id !== id);
+  store.set("kgf_history", state.history);
+  renderHistory();
+}
+
+/* ================================================================
+   渲染:观察台
+   ================================================================ */
+const PIPE = [
+  { key: "拆解", label: "拆解主题" },
+  { key: "起草", label: "并行起草裁决" },
+  { key: "汇聚", label: "汇聚去重" },
+  { key: "审核", label: "人工审核" },
+  { key: "落定", label: "终态" },
+];
+function stageIndex(status) {
+  switch (status) {
+    case "planning": return { active: 0 };
+    case "forging": case "running": return { active: 1 };
+    case "awaiting_review": return { active: 3 };
+    case "approved": case "rejected": return { active: 4, allDone: true };
+    case "failed": return { active: -1 };
+    default: return { active: 0 };
+  }
+}
+function renderPipe(status) {
+  const { active, allDone } = stageIndex(status);
+  const dead = status === "failed";
+  return `<div class="pipe-wrap"><ol class="pipe${dead ? " dead" : ""}">
+    ${PIPE.map((p, i) => {
+      const cls = i < active || allDone ? "done" : i === active ? "active" : "";
+      return `<li class="p-node ${cls}"><span class="p-dot"></span><span class="p-label">${p.label}</span></li>`;
+    }).join("")}
+  </ol></div>`;
+}
+function statusChip(status) {
+  const map = {
+    planning: "run", forging: "run", running: "run",
+    awaiting_review: "review", approved: "ok", rejected: "mute", failed: "bad",
+  };
+  const zh = { planning: "拆解中", forging: "并行起草中", running: "锻造中", awaiting_review: "待审核", approved: "已批准", rejected: "已拒绝", failed: "失败" };
+  return `<span class="chip ${map[status] || "run"}">${zh[status] || esc(status)}</span>`;
+}
+
+function renderStage() {
+  const el = $("stageView");
+  const run = state.run;
+  const parts = [];
+
+  if (!run) { parts.push(renderIntro()); el.innerHTML = parts.join(""); return; }
+
+  parts.push(`
+    <div class="run-meta">
+      ${statusChip(run.status)}
+      <span class="rid">${esc(run.id)}</span>
+      <span>已用时 <b id="elapsed" style="font-family:var(--mono)">00:00</b></span>
+      ${!FINAL.has(run.status) && run.status !== "awaiting_review" ? '<button class="btn btn-ghost" id="stopPoll" style="padding:2px 10px;font-size:12px;">停止轮询</button>' : ""}
+    </div>`);
+  parts.push(renderPipe(run.status));
+
+  if (run.status === "failed" || run.error) {
+    parts.push(`<div class="banner bad"><b>锻造失败</b><span class="sub err-text">${esc(run.error || "未知错误")}</span></div>`);
+  }
+
+  if (["planning", "forging", "running"].includes(run.status)) {
+    parts.push(`<div class="forging-note"><span class="spinner"></span>
+      ${run.status === "planning" ? "规划师正在拆解方向…" : "各主题支线并行起草 → 逐条裁决中…"}
+      <span style="color:var(--ink-faint);font-size:12px;">每 2s 轮询一次</span></div>`);
+  }
+
+  if (run.status === "awaiting_review" && state.review) {
+    parts.push(renderMatrix(state.review.report));
+    parts.push(renderReview());
+  }
+
+  if (FINAL.has(run.status)) {
+    const cov = state.review && state.review.report;
+    parts.push(`<div class="banner ${run.status === "approved" ? "ok" : run.status === "rejected" ? "mute" : "bad"}">
+      <b>${run.status === "approved" ? "已批准" : run.status === "rejected" ? "已拒绝" : "已失败"}</b>
+      <span class="sub">${run.status === "approved"
+        ? `提案已在 sidecar 侧落定;共 ${cov ? cov.total : "?"} 条概念可入库(实际写入由 Java 审核页完成)。`
+        : "该 run 已终结,可重新发起一次锻造。"}</span>
+    </div>`);
+    if (cov) parts.push(renderMatrix(cov));
+  }
+
+  if (state.lastRaw) {
+    parts.push(`<details class="raw"><summary>原始 API 响应(最近一次 GET /runs/{id})</summary>
+      <pre>${esc(JSON.stringify(state.lastRaw, null, 2))}</pre></details>`);
+  }
+  el.innerHTML = parts.join("");
+
+  const eb = $("elapsed");
+  if (eb) { tickElapsed(); }
+  const sp = $("stopPoll");
+  if (sp) sp.onclick = stopPoll;
+  bindReviewActions();
+}
+
+function renderIntro() {
+  return `<div class="intro">
+    <h2>评估锻造质量,再决定接入</h2>
+    <p>kg-forge 把一句学习方向锻造成「主题 × 层级」的概念树提案,等待人工审核。这张测试台直连 sidecar 的三条通道,用来检验提案质量与全链路状态流转。</p>
+    <ol>
+      <li><b>连接</b> —— 填 X-Forge-Secret;BYOK 四项全留空则用服务端兜底配置。</li>
+      <li><b>发起</b> —— 填学习方向与预算,点「开始锻造」;plan 拆解 → 各主题并行起草与裁决 → 汇聚去重。</li>
+      <li><b>审阅</b> —— 待审核时看覆盖矩阵与提案卡片;「批准/拒绝」验证 finalize 通道(编辑式落库在 Java 审核页,不在此处)。</li>
+    </ol>
+  </div>`;
+}
+
+/* ---------- 覆盖矩阵 ---------- */
+function renderMatrix(report) {
+  if (!report) return "";
+  const topics = Object.keys(report.topic_layer || {});
+  let max = 1;
+  for (const t of topics) for (const k of LAYER_KEYS) max = Math.max(max, report.topic_layer[t][String(k)] || 0);
+  const heat = (n, layer) => {
+    if (!n) return `<span class="zero">·</span>`;
+    const a = 0.14 + 0.38 * (n / max);
+    const rgb = { 1: "125,149,173", 2: "165,160,107", 3: "209,162,74", 4: "224,118,47", 5: "207,74,58" }[layer];
+    return `<span class="cell" style="background:rgba(${rgb},${a})">${n}</span>`;
+  };
+  return `<div class="matrix-card"><h3>覆盖矩阵(主题 × 层级)</h3>
+    <table class="matrix">
+      <thead><tr><th>主题</th>${LAYER_KEYS.map((l) => `<th>L${l} ${LAYERS[l]}</th>`).join("")}<th>计</th></tr></thead>
+      <tbody>
+        ${topics.map((t) => {
+          const row = report.topic_layer[t] || {};
+          const sum = LAYER_KEYS.reduce((a, l) => a + (row[String(l)] || 0), 0);
+          return `<tr><td>${esc(t)}</td>${LAYER_KEYS.map((l) => `<td>${heat(row[String(l)] || 0, l)}</td>`).join("")}<td style="color:var(--ink)"><b>${sum}</b></td></tr>`;
+        }).join("")}
+      </tbody>
+      <tfoot><tr><td>去重情况</td><td colspan="5">批内近似重复 <b>${report.dropped_duplicate ?? 0}</b> 条 · 与已有概念重复 <b>${report.dropped_existing ?? 0}</b> 条</td><td><b>${report.total ?? 0}</b></td></tr></tfoot>
+    </table></div>`;
+}
+
+/* ---------- 提案卡片 + 筛选 + 操作 ---------- */
+function visibleConcepts() {
+  if (!state.review) return [];
+  return state.review.concepts.filter((c) =>
+    (state.filterLayer === 0 || c.layer === state.filterLayer) &&
+    (!state.filterTopic || c.topic === state.filterTopic));
+}
+function renderReview() {
+  const all = state.review.concepts;
+  const layerCounts = {};
+  for (const c of all) layerCounts[c.layer] = (layerCounts[c.layer] || 0) + 1;
+  const topics = [...new Set(all.map((c) => c.topic))];
+
+  const groups = topics
+    .map((t) => ({ topic: t, list: visibleConcepts().filter((c) => c.topic === t) }))
+    .filter((g) => g.list.length);
+
+  return `<div>
+    <div class="review-bar">
+      <div class="layer-filters">
+        <button class="lf ${state.filterLayer === 0 ? "on" : ""}" data-l="0">全部<span class="n">${all.length}</span></button>
+        ${LAYER_KEYS.map((l) => `<button class="lf ${state.filterLayer === l ? "on" : ""}" data-l="${l}">L${l} ${LAYERS[l]}<span class="n">${layerCounts[l] || 0}</span></button>`).join("")}
+      </div>
+      <select class="topic-sel" id="topicSel">
+        <option value="">全部主题</option>
+        ${topics.map((t) => `<option value="${esc(t)}" ${state.filterTopic === t ? "selected" : ""}>${esc(t)}</option>`).join("")}
+      </select>
+      <div class="review-actions">
+        <span class="count-note">${groups.reduce((a, g) => a + g.list.length, 0)} / ${all.length} 条</span>
+        <button class="btn btn-bad" id="rejectBtn">${state.confirm === "reject" ? "确认拒绝?" : "拒绝"}</button>
+        <button class="btn btn-ok" id="approveBtn">${state.confirm === "approve" ? "确认批准?" : "批准"}</button>
+      </div>
+    </div>
+    <p class="hint" style="margin:8px 2px 0;">「批准/拒绝」走 sidecar 的 finalize 通道;编辑提案后落库是 Java 审核页的能力,此处不涉及。</p>
+    <div class="groups" style="margin-top:10px;">
+      ${groups.map((g) => `
+        <section class="topic-group ${state.collapsed.has(g.topic) ? "collapsed" : ""}" data-topic="${esc(g.topic)}">
+          <div class="tg-head"><b>${esc(g.topic)}</b><span class="cnt">${g.list.length} 条</span><span class="arrow">▾</span></div>
+          <div class="cards">
+            ${g.list.map((c) => `
+              <article class="prop">
+                <div class="prop-head">
+                  <span class="layer-tag l${c.layer}">L${c.layer} ${LAYERS[c.layer] || ""}</span>
+                  <h4>${esc(c.name)}</h4>
+                </div>
+                <p class="desc">${esc(c.description)}</p>
+                ${(c.sub_points || []).length ? `<ul class="subs">${c.sub_points.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>` : ""}
+              </article>`).join("")}
+          </div>
+        </section>`).join("") || `<p class="hint" style="padding:10px 2px;">当前筛选下没有提案。</p>`}
+    </div>
+  </div>`;
+}
+function bindReviewActions() {
+  document.querySelectorAll(".lf").forEach((b) => {
+    b.onclick = () => { state.filterLayer = +b.dataset.l; state.confirm = null; renderStage(); };
+  });
+  const ts = $("topicSel");
+  if (ts) ts.onchange = () => { state.filterTopic = ts.value; state.confirm = null; renderStage(); };
+  document.querySelectorAll(".tg-head").forEach((h) => {
+    h.onclick = () => {
+      const g = h.parentElement;
+      const t = g.dataset.topic;
+      g.classList.toggle("collapsed");
+      g.classList.contains("collapsed") ? state.collapsed.add(t) : state.collapsed.delete(t);
+    };
+  });
+  const ap = $("approveBtn"), rj = $("rejectBtn");
+  if (ap) ap.onclick = () => twoStep("approve", () => finalize("approved"));
+  if (rj) rj.onclick = () => twoStep("reject", () => finalize("rejected"));
+}
+function twoStep(kind, fn) {
+  if (state.confirm === kind) { clearTimeout(state.confirmTimer); state.confirm = null; fn(); return; }
+  state.confirm = kind;
+  renderStage();
+  state.confirmTimer = setTimeout(() => { state.confirm = null; renderStage(); }, 3000);
+}
+
+/* ---------- 计时 ---------- */
+function tickElapsed() {
+  const eb = $("elapsed");
+  if (!eb || !state.run) return;
+  const end = state.run.endedAt || Date.now();
+  eb.textContent = fmtElapsed(end - state.run.startedAt);
+}
+
+/* ================================================================
+   主流程
+   ================================================================ */
+async function startForge() {
+  const topic = $("topic").value.trim();
+  if (!topic) { alert("请填写学习方向"); return; }
+  const id = uid();
+  const body = {
+    run_id: id, topic,
+    goal: $("goal").value.trim() || null,
+    layer_budget: +$("budget").value || 50,
+    existing_names: $("existing").value.split("\n").map((s) => s.trim()).filter(Boolean),
+  };
+  const key = $("llmKey").value.trim();
+  if (key) {
+    body.llm = {
+      base_url: $("llmBase").value.trim() || "https://api.deepseek.com",
+      api_key: key,
+      model: $("llmModel").value.trim() || "deepseek-chat",
+      temperature: +$("llmTemp").value || 0.7,
+    };
+  }
+  try {
+    const r = await api("POST", "/runs", body);
+    state.run = { id: r.run_id || id, topic, status: "planning", startedAt: Date.now() };
+    state.review = null; state.lastRaw = null; state.filterLayer = 0; state.filterTopic = "";
+    histUpsert(state.run);
+    renderStage();
+    startPoll();
+  } catch (e) { showError(e.message); }
+}
+function attachRun(id, topic) {
+  stopPoll();
+  state.run = { id, topic, status: "running", startedAt: Date.now() };
+  state.review = null; state.lastRaw = null;
+  renderStage();
+  pollOnce(); startPoll();
+}
+function startPoll() {
+  stopPoll();
+  state.pollTimer = setInterval(pollOnce, 2000);
+  state.clockTimer = setInterval(tickElapsed, 1000);
+}
+function stopPoll() {
+  if (state.pollTimer) clearInterval(state.pollTimer);
+  if (state.clockTimer) clearInterval(state.clockTimer);
+  state.pollTimer = state.clockTimer = null;
+}
+async function pollOnce() {
+  if (!state.run) return stopPoll();
+  try {
+    const v = await api("GET", "/runs/" + state.run.id);
+    state.lastRaw = v;
+    state.run.status = v.status;
+    if (v.error) state.run.error = v.error;
+    if (v.concepts || v.report) state.review = { concepts: v.concepts || [], report: v.report };
+    if (v.coverage && state.review) state.review.report = v.coverage;
+    if (v.status === "awaiting_review" || FINAL.has(v.status)) {
+      if (FINAL.has(v.status)) state.run.endedAt = Date.now();
+      stopPoll();
+    }
+    histUpsert(state.run);
+    renderStage();
+  } catch (e) {
+    showError(e.message);
+    if (e.status === 0 || e.status === 401) stopPoll();
+  }
+}
+async function finalize(decision) {
+  if (!state.run) return;
+  try {
+    const r = await api("POST", `/runs/${state.run.id}/finalize`, { decision, note: null });
+    state.run.status = r.status || decision;
+    state.run.endedAt = Date.now();
+    stopPoll();
+    histUpsert(state.run);
+    renderStage();
+  } catch (e) { showError(e.message); }
+}
+function showError(msg) {
+  let box = document.querySelector(".stage-alert");
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "stage-alert";
+    box.style.marginBottom = "0";
+    $("stageView").prepend(box);
+  }
+  box.innerHTML = `<div class="alert">${esc(msg)}</div>`;
+  setTimeout(() => { if (box) box.remove(); }, 8000);
+}
+
+/* ================================================================
+   事件绑定与启动
+   ================================================================ */
+$("secret").value = state.secret;
+$("secret").addEventListener("change", () => { state.secret = $("secret").value; store.set("kgf_secret", state.secret); });
+$("testSecret").addEventListener("click", testSecret);
+$("budgetRange").addEventListener("input", () => { $("budget").value = $("budgetRange").value; });
+$("budget").addEventListener("change", () => { $("budgetRange").value = $("budget").value; });
+$("startBtn").addEventListener("click", startForge);
+$("hist").addEventListener("click", (ev) => {
+  const del = ev.target.closest(".h-del");
+  const li = ev.target.closest("li[data-i]");
+  if (!li) return;
+  const h = state.history[+li.dataset.i];
+  if (!h) return;
+  if (del) { histRemove(h.id); return; }
+  attachRun(h.id, h.topic);
+});
+renderHistory();
+renderStage();
+renderConn();
+checkConn();
+setInterval(() => { if (state.demo) checkConn(); }, 10000);   // 演示模式下持续尝试回连
+</script>
+</body>
+</html>

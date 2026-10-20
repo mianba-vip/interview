@@ -131,15 +131,15 @@ fi
 
 # Build only local application images. Docker reuses cached base images/layers and
 # does not contact the registry because no --pull option is supplied.
-BUILD_SERVICES=(backend)
+BUILD_SERVICES=(backend kg-forge)
 if [[ "$DEPLOY_LEGACY_WEB" == true ]]; then BUILD_SERVICES+=(web); fi
 echo "[build] ${BUILD_SERVICES[*]} (local cache enabled)"
 "${COMPOSE[@]}" build "${BUILD_SERVICES[@]}"
 
 # --no-build prevents Compose from triggering an implicit rebuild. Compose uses
 # already-present immutable infrastructure images and the application images built above.
-echo "[up] postgres redis minio backend"
-SERVICES=(postgres redis minio backend)
+echo "[up] postgres redis minio backend kg-forge"
+SERVICES=(postgres redis minio backend kg-forge)
 if [[ "$DEPLOY_LEGACY_WEB" == true ]]; then SERVICES+=(web); fi
 if [[ "$ENABLE_OBSERVABILITY" == "true" ]]; then
   SERVICES+=(prometheus tempo loki alloy grafana)
@@ -173,6 +173,15 @@ for ((i=1; i<=60; i++)); do
   sleep 2
 done
 curl -fsS http://127.0.0.1:23333/healthz >/dev/null
+
+# kg-forge 不发布宿主机端口，健康检查走容器内 Python（slim 镜像无 curl）。
+for ((i=1; i<=30; i++)); do
+  "${COMPOSE[@]}" exec -T kg-forge python -c \
+    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/healthz', timeout=5)" >/dev/null 2>&1 && break
+  sleep 2
+done
+"${COMPOSE[@]}" exec -T kg-forge python -c \
+  "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/healthz', timeout=5)" >/dev/null
 if [[ "$DEPLOY_LEGACY_WEB" == true ]]; then
   curl -fsS -H "Host: mianba.vip" \
     "http://127.0.0.1:${WEB_HTTP_PORT:-80}/actuator/health" >/dev/null

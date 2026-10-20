@@ -102,6 +102,8 @@ services:
       APP_STORAGE_BUCKET: ${APP_STORAGE_BUCKET:-interview}
       APP_STORAGE_REGION: ${APP_STORAGE_REGION:-us-east-1}
       APP_JWT_SECRET: ${APP_JWT_SECRET:?请在 .env 设置 APP_JWT_SECRET}
+      # kg-forge 服务间认证：与下方 kg-forge 服务用同一变量，保证两侧一致
+      APP_FORGE_SECRET: ${APP_FORGE_SECRET:-change-me-forge-secret}
       APP_SWAGGER_ENABLED: ${APP_SWAGGER_ENABLED:-false}
       MODEL_NAME: ${MODEL_NAME:-deepseek-chat}
       MAIL_HOST: ${MAIL_HOST:-}
@@ -116,6 +118,21 @@ services:
       redis:
         condition: service_healthy
       minio:
+        condition: service_healthy
+
+  # kg-forge：知识图谱锻造炉 sidecar（Python/LangGraph）。仅 Compose 内网，
+  # 不发布端口；backend 经 http://kg-forge:8100 调用，双方共用 APP_FORGE_SECRET。
+  # Agent 只有提案权；批准后的校验与落库由 backend（ForgeService）完成。
+  kg-forge:
+    build:
+      context: ./kg-forge
+    restart: unless-stopped
+    environment:
+      FORGE_SECRET: ${APP_FORGE_SECRET:-change-me-forge-secret}
+      FORGE_DB_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # FORGE_API_KEY：可选服务端兜底 LLM key（请求未带 BYOK 时使用），默认不配
+    depends_on:
+      postgres:
         condition: service_healthy
 
   # 旧机过渡入口或同机回退，构建上下文为部署机已有的 web-image/。
