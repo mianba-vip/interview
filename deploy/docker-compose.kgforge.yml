@@ -1,0 +1,23 @@
+# 服务器 legacy compose 的 kg-forge 增量覆盖文件。
+#
+# 服务器实际运行的是 /opt/mianba/docker-compose.yml（历史版本，与仓库
+# docker-compose.prod.yml 已分叉）。为避免盲改线上文件，本文件以
+# docker compose 多文件合并的方式叠加：
+#   - 新增 kg-forge sidecar 服务（构建上下文 ./kg-forge，由 deploy-local.sh 上传源码）
+#   - backend 透传 APP_FORGE_SECRET（与 kg-forge 的 FORGE_SECRET 同源，保证两侧一致）
+#
+# 合并语义：services.backend.environment 为按键合并，不影响服务器现有配置；
+# kg-forge 为全新服务。depends_on 用简式列表，兼容 legacy 文件无 healthcheck 的写法。
+services:
+  kg-forge:
+    build:
+      context: ./kg-forge
+    restart: unless-stopped
+    environment:
+      FORGE_SECRET: ${APP_FORGE_SECRET:-change-me-forge-secret}
+      FORGE_DB_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      - postgres
+  backend:
+    environment:
+      APP_FORGE_SECRET: ${APP_FORGE_SECRET:-change-me-forge-secret}

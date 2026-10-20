@@ -68,6 +68,14 @@ def _require_secret(x_forge_secret: str | None) -> None:
         raise HTTPException(status_code=401, detail="invalid forge secret")
 
 
+def _has_interrupt(snapshot) -> bool:
+    """interrupt 挂起检测。兼容 langgraph 新旧两版 StateSnapshot.tasks 类型:
+    旧版 dict[str, PregelTask],新版 tuple[PregelTask, ...]。"""
+    tasks = snapshot.tasks or ()
+    items = tasks.values() if isinstance(tasks, dict) else tasks
+    return any(bool(getattr(t, "interrupts", None)) for t in items)
+
+
 app = FastAPI(title="kg-forge", lifespan=lifespan)
 
 
@@ -156,15 +164,21 @@ async def get_run(run_id: str, x_forge_secret: str | None = Header(default=None)
     values = snapshot.values if snapshot.values else {}
     status = values.get("status")
 
+    # 查无此 thread:sidecar 以 memory 模式重启过(进度不落库)或 run_id 无效。
+    # 如实报失败,别让前端对着不存在的任务永远转圈(_ACTIVE_THREADS 兜住
+    # POST 后、首个 checkpoint 写入前的亚秒级窗口)。
+    if not values and run_id not in _ACTIVE_THREADS:
+        return {
+            "status": "failed",
+            "error": "该 run 不存在:sidecar 重启过(memory 模式进度不落库)或 run_id 无效,请重新发起锻造",
+        }
+
     if status in FINAL_STATUSES:
         return {"status": status, "error": values.get("error"), "coverage": values.get("coverage")}
 
     # interrupt 挂起：assemble 待重入 → 审核页载荷从已合并提案现算（与节点内同一纯函数）
     if snapshot.next:
-        interrupted = any(
-            getattr(t, "interrupts", None) for t in (snapshot.tasks or {}).values()
-        )
-        if interrupted:
+        if _has_interrupt(snapshot):
             kept, report = dedup_proposals(
                 list(values.get("proposals", [])), values.get("req", {}).get("existing_names", [])
             )

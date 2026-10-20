@@ -400,7 +400,7 @@ public class GradingService {
         applyMastery(userId, scores, run.getMode(), timed,
                 true, run.getGuideRounds(), run.isRevealed());
 
-        return new GradeView(runId, q.getId(), rawScore, Grade.GOOD.name(), "[]", mcqCorrectOf(q), nextReviewOf(uid, q));
+        return new GradeView(runId, q.getId(), rawScore, Grade.GOOD.name(), "[]", mcqCorrectOf(q), nextReviewOf(userId, q));
     }
 
     /** 把整段对话拼成「老师问 / 学生答」实录，供判分器判断哪些评分点被实际考到 */

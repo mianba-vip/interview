@@ -38,7 +38,10 @@ trap cleanup_backup_tmp EXIT
 
 cd "$DEPLOY_DIR"
 
-COMPOSE_ARGS=(-f "$COMPOSE_FILE")
+# COMPOSE_FILE 支持冒号分隔多文件（基础 compose + 增量覆盖），逐一展开为 -f 参数
+COMPOSE_ARGS=()
+IFS=':' read -ra _compose_files <<< "$COMPOSE_FILE"
+for _f in "${_compose_files[@]}"; do COMPOSE_ARGS+=(-f "$_f"); done
 if [[ "$ENABLE_OBSERVABILITY" == "true" ]]; then
   COMPOSE_ARGS+=(-f "$OBSERVABILITY_FILE")
 fi
@@ -180,8 +183,12 @@ for ((i=1; i<=30; i++)); do
     "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/healthz', timeout=5)" >/dev/null 2>&1 && break
   sleep 2
 done
-"${COMPOSE[@]}" exec -T kg-forge python -c \
-  "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/healthz', timeout=5)" >/dev/null
+if ! "${COMPOSE[@]}" exec -T kg-forge python -c \
+    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/healthz', timeout=5)" >/dev/null 2>&1; then
+  echo "ERROR: kg-forge 健康检查未通过，最近的容器日志如下（定位崩溃原因）：" >&2
+  "${COMPOSE[@]}" logs --tail=40 kg-forge >&2 || true
+  exit 1
+fi
 if [[ "$DEPLOY_LEGACY_WEB" == true ]]; then
   curl -fsS -H "Host: mianba.vip" \
     "http://127.0.0.1:${WEB_HTTP_PORT:-80}/actuator/health" >/dev/null
