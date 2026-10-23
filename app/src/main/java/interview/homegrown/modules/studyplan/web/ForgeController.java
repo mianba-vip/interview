@@ -6,6 +6,7 @@ import interview.homegrown.modules.studyplan.repository.KgForgeRunRepository;
 import interview.homegrown.modules.studyplan.service.ForgeService;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -37,11 +38,16 @@ public class ForgeController {
     public List<Map<String, Object>> list() {
         Long uid = CurrentUser.id();
         return runRepo.findByUserIdOrderByIdDesc(uid).stream()
-                .map(r -> Map.<String, Object>of(
-                        "id", r.getId(),
-                        "topic", r.getTopic(),
-                        "status", r.getStatus(),
-                        "conceptCount", r.getConceptCount()))
+                .map(r -> {
+                    // planId 可为 null(锻造到全局概念池)——Map.of 不接受 null,用 HashMap
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("id", r.getId());
+                    m.put("planId", r.getPlanId());
+                    m.put("topic", r.getTopic());
+                    m.put("status", r.getStatus());
+                    m.put("conceptCount", r.getConceptCount());
+                    return m;
+                })
                 .toList();
     }
 

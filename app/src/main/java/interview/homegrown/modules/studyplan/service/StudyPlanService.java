@@ -44,6 +44,7 @@ import java.util.stream.Collectors;
 
 import static interview.homegrown.modules.drill.grader.GradeScale.PASS_LINE;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
+import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 /**
@@ -264,6 +265,28 @@ public class StudyPlanService {
         // 互联网补充：默认预取每个知识点的标准内容（异步，不阻塞建计划）
         webEnrichmentService.enrichPlanAsync(plan.getId());
         return toView(userId, plan);
+    }
+
+    /**
+     * 新建空方向（锻造优先流程的起点，2026-10-21）：先建方向壳，
+     * 再由用户经「图谱锻造」（POST /api/forge/runs 带 planId）往里批产概念。
+     * 与已废弃的 intake 链路无关；同名冲突直接 409，不做静默合并。
+     */
+    @Transactional
+    public PlanView createPlan(Long userId, String title, String goal) {
+        if (title == null || title.isBlank()) {
+            throw new ResponseStatusException(BAD_REQUEST, "方向名不能为空");
+        }
+        String t = title.strip();
+        if (planRepo.findByUserIdAndTitle(userId, t).isPresent()) {
+            throw new ResponseStatusException(CONFLICT, "同名方向已存在：" + t);
+        }
+        StudyPlan p = new StudyPlan();
+        p.setUserId(userId);
+        p.setTitle(t);
+        p.setGoal(goal == null || goal.isBlank() ? null : goal.strip());
+        p.setStatus("ACTIVE");
+        return toView(userId, planRepo.save(p));
     }
 
     public List<PlanView> list(Long userId) {

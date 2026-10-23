@@ -1,0 +1,12 @@
+# kg-forge 生产依赖锁：Dockerfile 依赖层以此为准（pyproject.toml 仍用于本地开发）。
+# 版本取自 2026-10-20 服务器实机构建并验证通过的组合，全部钉死，
+# 防止开放约束在未来的重新构建中解析到行为变更的上游新版本。
+# 升级流程：本地验证新版本 → 更新本文件 → 服务器重建镜像。
+fastapi==0.156.4
+uvicorn[standard]==0.54.0
+langgraph==0.3.34
+langgraph-checkpoint-postgres==3.0.5
+psycopg[binary]==3.3.6
+openai==3.35.1
+pydantic==2.14.1
+pydantic-settings==2.16.1

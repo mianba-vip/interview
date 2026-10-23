@@ -93,13 +93,41 @@ async def test_dedup_against_existing_and_in_batch():
 
     proposals = [
         {"name": "分代假说", "description": "x", "topic": "GC", "layer": 1},
-        {"name": "分代假说。", "description": "x", "topic": "GC", "layer": 1},   # 批内近似重复
-        {"name": "完全无关概念", "description": "x", "topic": "GC", "layer": 2},
+        {"name": "分代假说。", "description": "x", "topic": "GC", "layer": 1},      # 标点变体 → 批内重复
+        {"name": "完全无关的概念。", "description": "x", "topic": "GC", "layer": 2},  # 与 existing 归一后同名
     ]
     kept, report = dedup_proposals(proposals, existing_names=["完全无关的概念"])
     assert [c["name"] for c in kept] == ["分代假说"]
     assert report.dropped_duplicate == 1
     assert report.dropped_existing == 1
+
+
+def test_dedup_short_name_suffix_variant():
+    """Jaccard 盲区:短名称「原文 + 后缀词」必须由包含度闸补住。"""
+    from kg_forge.schema import dedup_proposals
+
+    proposals = [
+        {"name": "G1 收集器", "description": "x", "topic": "GC", "layer": 1},
+        {"name": "G1 收集器原理", "description": "x", "topic": "GC", "layer": 1},
+    ]
+    kept, report = dedup_proposals(proposals, existing_names=[])
+    assert len(kept) == 1
+    assert report.dropped_duplicate == 1
+
+
+def test_dedup_not_overmerge():
+    """包含度闸不能误杀:同前缀不同概念、超短名、子串类名都不算重复。"""
+    from kg_forge.schema import dedup_proposals
+
+    proposals = [
+        {"name": "JVM 调优", "description": "x", "topic": "t", "layer": 3},
+        {"name": "JVM 入门", "description": "x", "topic": "t", "layer": 1},
+        {"name": "JVM", "description": "x", "topic": "t", "layer": 1},
+        {"name": "HashMap", "description": "x", "topic": "t", "layer": 1},
+        {"name": "ConcurrentHashMap", "description": "x", "topic": "t", "layer": 3},
+    ]
+    kept, _ = dedup_proposals(proposals, existing_names=[])
+    assert [c["name"] for c in kept] == ["JVM 调优", "JVM 入门", "JVM", "HashMap", "ConcurrentHashMap"]
 
 
 @pytest.mark.asyncio

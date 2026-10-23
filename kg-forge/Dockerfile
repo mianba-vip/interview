@@ -1,9 +1,17 @@
 FROM python:3.12-slim
 
 WORKDIR /app
+# 依赖层与代码层分离：只改 Python 代码不再触发全量重下依赖（层缓存以
+# requirements.txt 内容为键）。版本全部钉死——2026-10 两次踩坑（psycopg
+# 缺 binary、pydantic-settings env 匹配行为变更）都是开放约束解析到
+# 上游新版所致；升级依赖时只改 requirements.txt 并重新验证。
+# 清华镜像：机房直连 pypi.org 仅 ~60-110KB/s，镜像源可把重装从 ~8 分钟压到 <1 分钟。
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+# 应用本体：--no-deps 只装 kg-forge 自身，依赖已由上层就位
 COPY pyproject.toml ./
 COPY src ./src
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir --no-deps .
 
 EXPOSE 8100
 # 只监听容器内网：不发布公网端口，由 compose 网络隔离（见 interview 仓库 compose）

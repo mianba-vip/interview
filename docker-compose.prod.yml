@@ -102,8 +102,11 @@ services:
       APP_STORAGE_BUCKET: ${APP_STORAGE_BUCKET:-interview}
       APP_STORAGE_REGION: ${APP_STORAGE_REGION:-us-east-1}
       APP_JWT_SECRET: ${APP_JWT_SECRET:?请在 .env 设置 APP_JWT_SECRET}
-      # kg-forge 服务间认证：与下方 kg-forge 服务用同一变量，保证两侧一致
-      APP_FORGE_SECRET: ${APP_FORGE_SECRET:-change-me-forge-secret}
+      # kg-forge 服务间认证与地址：secret 与下方 kg-forge 服务用同一变量，保证两侧一致。
+      # base-url 必须显式指向 compose 内网服务名——不设会退回 application.yml 默认的
+      # localhost:8100，在容器内不是 kg-forge，锻造任务将全部连不上。
+      APP_FORGE_BASE_URL: http://kg-forge:8100
+      APP_FORGE_SECRET: ${APP_FORGE_SECRET:?请在 .env 设置 APP_FORGE_SECRET}
       APP_SWAGGER_ENABLED: ${APP_SWAGGER_ENABLED:-false}
       MODEL_NAME: ${MODEL_NAME:-deepseek-chat}
       MAIL_HOST: ${MAIL_HOST:-}
@@ -128,7 +131,7 @@ services:
       context: ./kg-forge
     restart: unless-stopped
     environment:
-      FORGE_SECRET: ${APP_FORGE_SECRET:-change-me-forge-secret}
+      FORGE_SECRET: ${APP_FORGE_SECRET:?请在 .env 设置 APP_FORGE_SECRET}
       FORGE_DB_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       # FORGE_API_KEY：可选服务端兜底 LLM key（请求未带 BYOK 时使用），默认不配
     depends_on:
