@@ -164,14 +164,13 @@ async def get_run(run_id: str, x_forge_secret: str | None = Header(default=None)
     values = snapshot.values if snapshot.values else {}
     status = values.get("status")
 
-    # 查无此 thread:sidecar 以 memory 模式重启过(进度不落库)或 run_id 无效。
-    # 如实报失败,别让前端对着不存在的任务永远转圈(_ACTIVE_THREADS 兜住
-    # POST 后、首个 checkpoint 写入前的亚秒级窗口)。
-    if not values and run_id not in _ACTIVE_THREADS:
-        return {
-            "status": "failed",
-            "error": "该 run 不存在:sidecar 重启过(memory 模式进度不落库)或 run_id 无效,请重新发起锻造",
-        }
+    # 查无此 thread(values 空):最常见原因是「dispatch 窗口期」——Java 侧刚建
+    # kg_forge_run 行,前端立刻轮询,而 DurableJobWorker 要几秒后才 POST /runs
+    # 过来。此时必须报 running 让前端继续等,绝不能报失败(会把行状态误写成
+    # FAILED)。memory 开发模式下重启后的陈旧 run 也会走到这里表现为永远
+    # forging——那是可接受的代价,生产(PG)模式 checkpoint 落库无此问题。
+    if not values:
+        return {"status": "running"}
 
     if status in FINAL_STATUSES:
         return {"status": status, "error": values.get("error"), "coverage": values.get("coverage")}
