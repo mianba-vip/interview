@@ -59,22 +59,28 @@ START → plan ──Send 并行播种──► forge_topic(每主题一条支�
 
 ## 部署
 
-已接入仓库根目录的 `docker-compose.prod.yml`（`kg-forge` 服务，不发布端口），
-`deploy-prod.sh` 会随 backend 一起构建/启动/健康检查。compose 中实际生效的配置：
+已正式接线（2026-10-21）：
+
+- 仓库根 `docker-compose.prod.yml` 已含 `kg-forge` 服务（build `./kg-forge`，不发布端口），
+  `deploy-prod.sh` 会随 backend 一起构建/启动/健康检查；backend 通过
+  `APP_FORGE_BASE_URL=http://kg-forge:8100` 访问（compose 已显式设置——不设会退回
+  localhost 默认值导致容器内连不上）；
+- 线上 legacy compose（`/opt/mianba/docker-compose.yml`）走
+  `deploy/docker-compose.kgforge.yml` 增量覆盖，同一套变量与地址；
+- `.env` **必须**设置 `APP_FORGE_SECRET=<随机长串>`：两处 compose 均按 `:?` 必填校验，
+  未设置直接拒绝启动（避免带着公开默认值上线）；backend 与 sidecar 自动共用同一变量。
 
 ```yaml
   kg-forge:
     build: ./kg-forge
     restart: unless-stopped
     environment:
-      FORGE_SECRET: ${APP_FORGE_SECRET:-change-me-forge-secret}   # 与 backend 的 APP_FORGE_SECRET 同源
+      FORGE_SECRET: ${APP_FORGE_SECRET:?请在 .env 设置 APP_FORGE_SECRET}
       FORGE_DB_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     # 不发布端口：仅 compose 内网，backend 通过服务名 kg-forge:8100 访问
     depends_on:
       postgres: { condition: service_healthy }
 ```
-
-服务器 `.env` 可选设置 `APP_FORGE_SECRET=<随机长串>`（backend 与 sidecar 自动一致）。
 
 ## 本地开发
 
@@ -103,6 +109,22 @@ pytest                      # 假 LLM + InMemorySaver，全链路含 interrupt/�
 FORGE_CHECKPOINT=memory FORGE_SECRET=test-secret \
 FORGE_API_KEY=sk-xxx uvicorn kg_forge.api:app --port 8100
 ```
+
+### 对比评测（双路盲测）
+
+测试台顶栏切「对比评测」：同一输入下，kg-forge 流水线对阵 interview 后端的
+intake 旧逻辑（`POST /api/study-plan/intake`，多轮收敛出 draft）。
+
+- **隔离性**：intake 走真实接口但**零写库**（落库只发生在 `/confirm`，本页永不调用）；
+  后端与 sidecar 都不需要为此改任何代码（后端 CORS 已放行）；
+- **公平性**：kg-forge 用页面 BYOK，intake 用后端账号配置的 LLM——两边配**同一个模型**；
+- **自动指标**：深层占比（L3-L5）、层级均衡熵、批内重复率（trigram Jaccard >0.85，与
+  Java/Python 侧同语义）、子点均数/描述均长、预算达成率、耗时与 LLM 调用数；
+- **人工盲测**：左右随机、来源隐藏，四维打分 + 二选一，提交揭晓；评分存浏览器
+  localStorage（`kgf_evals`），底部累计表给出两边均分与胜场。
+
+前提：本机起 interview 后端（默认 `http://localhost:23333`），左侧「interview
+后端」卡里登录一次（凭据只存本机浏览器）。
 
 ## 与 interview 后端的对接速查
 

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import operator
+import re
 from typing import Annotated, Literal, TypedDict
 
 from pydantic import BaseModel, Field
@@ -103,8 +104,22 @@ FINAL_STATUSES = {"approved", "rejected", "failed"}
 
 
 # 与 interview 的 NgramSimilarityGuard 同语义：字符级 trigram Jaccard。
+# 2026-10-21 修订两处盲区：
+#   ① 比较前先做标点/空白归一（模型爱在名称尾巴带「。」或空格不一致）；
+#   ② 补「包含度」判重（交集/较小集 ≥0.92，且较小集 ≥2 个 trigram 才启用，
+#     防 JVM 这类超短名误伤一切），抓「原文 + 后缀词」变体
+#     （分代假说 vs 分代假说基础 这类 Jaccard 只有 ~0.6 的近重复）。
+# 主判据 Jaccard >0.85 与 Java 侧保持一致；Java 的 NgramSimilarityGuard
+# 若要同款增强，可在其判重调用处并行采用 containment（方法已存在）。
+_NAME_PUNCT_RE = re.compile(r"[\s。·、，,;；:：!！?？…\-—～~·()（）\[\]【】《》「」『』'\"‘’“”]+")
+
+
+def _norm_name(s: str) -> str:
+    return _NAME_PUNCT_RE.sub("", (s or "").strip())
+
+
 def _trigrams(s: str) -> set[str]:
-    t = s.strip()
+    t = _norm_name(s)
     if len(t) < 3:
         return {t}
     return {t[i : i + 3] for i in range(len(t) - 2)}
@@ -118,6 +133,31 @@ def similarity(a: str, b: str) -> float:
 
 
 DUP_THRESHOLD = 0.85  # 与 interview QuestionService.DUP_THRESHOLD 同值
+CONTAIN_THRESHOLD = 0.92  # 包含度判重线（较 Jaccard 略高，宁少误杀）
+
+
+def is_dup(a: str, b: str) -> bool:
+    """判重三道闸：归一后同名 / trigram Jaccard / 受保护的包含度。
+
+    包含度的两道护栏：较小名 ≥2 个 trigram（防「JVM」这类超短名命中一切）；
+    归一后长度比 ≤1.7（防子串误杀——HashMap ⊂ ConcurrentHashMap 但不是重复）。
+    """
+    na, nb = _norm_name(a), _norm_name(b)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    ta, tb = _trigrams(a), _trigrams(b)
+    if not ta or not tb:
+        return False
+    inter = len(ta & tb)
+    if inter / len(ta | tb) > DUP_THRESHOLD:
+        return True
+    la, lb = len(na), len(nb)
+    if max(la, lb) > min(la, lb) * 1.7:
+        return False
+    smaller = min(len(ta), len(tb))
+    return smaller >= 2 and inter / smaller >= CONTAIN_THRESHOLD
 
 
 def dedup_proposals(proposals: list[dict], existing_names: list[str]) -> tuple[list[dict], CoverageReport]:
@@ -134,10 +174,10 @@ def dedup_proposals(proposals: list[dict], existing_names: list[str]) -> tuple[l
         name = (p.get("name") or "").strip()
         if not name:
             continue
-        if any(similarity(name, k) > DUP_THRESHOLD for k in kept_names):
+        if any(is_dup(name, k) for k in kept_names):
             report.dropped_duplicate += 1
             continue
-        if any(similarity(name, e) > DUP_THRESHOLD for e in existing):
+        if any(is_dup(name, e) for e in existing):
             report.dropped_existing += 1
             continue
         kept.append({**p, "name": name})

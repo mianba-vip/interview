@@ -288,6 +288,40 @@ details.raw pre {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ---------- 对比评测模式 ---------- */
+.tabs { display: flex; gap: 6px; }
+.tab {
+  border: 1px solid var(--line); background: transparent; border-radius: 6px;
+  padding: 4px 12px; font-size: 12.5px; color: var(--ink-dim);
+}
+.tab.on { color: var(--ember); border-color: rgba(232, 99, 42, .5); background: var(--ember-soft); }
+.duel { display: grid; grid-template-columns: 1fr; gap: 14px; align-items: start; }
+.duel-col { background: var(--panel); border: 1px solid var(--line-soft); border-radius: 8px; padding: 14px 16px; }
+.duel-col h3 { margin: 0 0 4px; font-size: 15px; }
+.duel-col .origin { font-size: 12px; color: var(--ink-faint); display: block; margin-bottom: 8px; }
+.duel-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; font-size: 13px; color: var(--ink-dim); }
+.metrics { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 6px 0 10px; }
+.metrics th, .metrics td { padding: 4px 8px; border-bottom: 1px solid var(--line-soft); text-align: left; color: var(--ink-dim); }
+.metrics td:last-child, .metrics th:last-child { text-align: right; }
+.metrics td:last-child { color: var(--ink); font-family: var(--mono); }
+.score-card { background: var(--panel); border: 1px solid var(--line-soft); border-radius: 8px; padding: 14px 16px; }
+.score-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 13px; }
+.score-row label { flex: 1; color: var(--ink-dim); }
+.score-row input[type="range"] { width: 130px; accent-color: var(--ember); }
+.score-row .v { font-family: var(--mono); width: 16px; text-align: right; }
+.pick-row { display: flex; gap: 10px; margin: 12px 0; }
+.pick {
+  flex: 1; border: 1px solid var(--line); border-radius: 6px; padding: 8px;
+  background: transparent; color: var(--ink-dim); font-size: 13px;
+}
+.pick.on { border-color: var(--ember); color: var(--ember); background: var(--ember-soft); }
+.duel-score-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+.reveal-banner {
+  padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(209, 162, 74, .5);
+  background: rgba(209, 162, 74, .09); font-size: 14px; margin-bottom: 12px;
+}
+.mini-note { font-size: 12px; color: var(--ink-faint); margin: 4px 2px; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
@@ -299,6 +333,10 @@ details.raw pre {
   <div class="brand">
     <span class="brand-mark" aria-hidden="true">⚒️</span>
     <div class="brand-text"><strong>kg-forge</strong><span>知识图谱锻造测试台</span></div>
+  </div>
+  <div class="tabs">
+    <button class="tab on" id="tabSolo">锻造测试</button>
+    <button class="tab" id="tabDuel">对比评测</button>
   </div>
   <div class="conn" id="conn">
     <span class="conn-dot" id="connDot"></span><span id="connText">检测 sidecar…</span>
@@ -317,6 +355,24 @@ details.raw pre {
         <div class="hint"><button class="btn btn-ghost" id="testSecret" style="padding:2px 6px;">测试密钥</button>
           <span id="secretResult"></span></div>
       </div>
+    </section>
+
+    <section class="card" id="backendCard" style="display:none">
+      <h3>interview 后端(旧逻辑)</h3>
+      <div class="field">
+        <label for="beUrl">地址</label>
+        <input type="text" id="beUrl" placeholder="http://localhost:23333">
+      </div>
+      <div class="field">
+        <label for="beEmail">账号邮箱</label>
+        <input type="text" id="beEmail" placeholder="you@example.com">
+      </div>
+      <div class="field">
+        <label for="bePass">密码</label>
+        <input type="password" id="bePass" autocomplete="off">
+      </div>
+      <button class="btn" id="beLogin" style="width:100%">登录(取 token)</button>
+      <div class="hint" id="beState">对比用真实 intake 接口,零写库(落库只发生在 confirm,本页永不调用)。凭据只存本机浏览器。intake 用账号配置的 LLM,与左侧 BYOK 同模型才公平。</div>
     </section>
 
     <section class="card">
@@ -362,6 +418,7 @@ details.raw pre {
         <textarea id="existing" placeholder="如:分代假说"></textarea>
       </div>
       <button class="btn btn-primary" id="startBtn">开 始 锻 造</button>
+      <button class="btn btn-primary" id="duelBtn" style="display:none;margin-top:8px;">发起对比评测(双路并行)</button>
     </section>
 
     <section class="card">
@@ -406,6 +463,11 @@ const state = {
   pollTimer: null,
   clockTimer: null,
   history: store.get("kgf_history", []),
+  // ---- 对比评测模式 ----
+  mode: "solo",             // solo | duel
+  be: store.get("kgf_be", { url: "", email: "", pass: "", token: "" }),
+  duel: null,               // 双路对比的当前场次
+  evals: store.get("kgf_evals", []),
 };
 
 class ApiError extends Error {
@@ -902,6 +964,401 @@ function showError(msg) {
 }
 
 /* ================================================================
+   对比评测模式(双路盲测):kg-forge 流水线 vs intake 旧逻辑
+   - intake 走 interview 后端真实接口(POST /api/study-plan/intake),
+     无状态零写库(落库只在 confirm,本页永不调用);
+   - 公平性:同一输入;kg-forge 用页面 BYOK,intake 用账号配置的 LLM——
+     请确保两边是同一个模型。
+   ================================================================ */
+
+// ---------- 指标计算(与 sidecar schema 同语义的 JS 版) ----------
+const _NORM_RE = /[\s。·、,;::!?…\-—~·()()\[\]【】《》「」『』'"'""…]+/g;
+function _normName(s) { return (s || "").replace(_NORM_RE, ""); }
+function _trigrams(s) {
+  s = _normName(s);
+  if (s.length < 3) return new Set([s]);
+  const t = new Set();
+  for (let i = 0; i < s.length - 2; i++) t.add(s.slice(i, i + 3));
+  return t;
+}
+function _sim(a, b) {
+  const ta = _trigrams(a), tb = _trigrams(b);
+  if (!ta.size || !tb.size) return 0;
+  let inter = 0;
+  for (const x of ta) if (tb.has(x)) inter++;
+  return inter / (ta.size + tb.size - inter);
+}
+// 与 sidecar schema.is_dup 同款判重:归一同名 / Jaccard>0.85 / 带护栏的包含度
+function _isDup(a, b) {
+  const na = _normName(a), nb = _normName(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  const ta = _trigrams(a), tb = _trigrams(b);
+  if (!ta.size || !tb.size) return false;
+  let inter = 0;
+  for (const x of ta) if (tb.has(x)) inter++;
+  if (inter / (ta.size + tb.size - inter) > 0.85) return true;
+  if (Math.max(na.length, nb.length) > Math.min(na.length, nb.length) * 1.7) return false;
+  const smaller = Math.min(ta.size, tb.size);
+  return smaller >= 2 && inter / smaller >= 0.92;
+}
+function _greedyDropped(names) {
+  const kept = []; let dropped = 0;
+  for (const n of names) {
+    if (kept.some((k) => _isDup(n, k))) dropped++;
+    else kept.push(n);
+  }
+  return dropped;
+}
+function aggReport(concepts) {
+  const topic_layer = {}; const kept = []; let dup = 0;
+  for (const c of concepts) {
+    if (kept.some((k) => _isDup(c.name, k))) { dup++; continue; }
+    kept.push(c.name);
+    const key = c.topic || "未分组";
+    const t = (topic_layer[key] = topic_layer[key] || {});
+    const l = String(Math.min(5, Math.max(1, c.layer || 1)));
+    t[l] = (t[l] || 0) + 1;
+  }
+  return { topic_layer, total: kept.length, dropped_duplicate: dup, dropped_existing: 0 };
+}
+function computeMetrics(concepts, budget, ms, calls) {
+  const n = concepts.length || 0;
+  const layers = [0, 0, 0, 0, 0, 0];
+  for (const c of concepts) layers[Math.min(5, Math.max(1, c.layer || 1))]++;
+  const deep = (layers[3] + layers[4] + layers[5]) / (n || 1);
+  let entropy = 0;
+  for (let i = 1; i <= 5; i++) { const p = layers[i] / (n || 1); if (p > 0) entropy -= p * Math.log2(p); }
+  entropy /= Math.log2(5);
+  const dropped = _greedyDropped(concepts.map((c) => c.name || ""));
+  const subsAvg = n ? concepts.reduce((a, c) => a + (c.sub_points || []).length, 0) / n : 0;
+  const descAvg = n ? concepts.reduce((a, c) => a + (c.description || "").length, 0) / n : 0;
+  return { n, deep, entropy, dupRate: dropped / (n || 1), subsAvg, descAvg, budgetHit: n / (budget || 50), ms, calls };
+}
+function metricsTable(m) {
+  return `<table class="metrics">
+    <tr><td>知识点数 · 预算达成</td><td>${m.n} · ${(m.budgetHit * 100).toFixed(0)}%</td></tr>
+    <tr><td>深层占比(L3-L5)</td><td>${(m.deep * 100).toFixed(0)}%</td></tr>
+    <tr><td>层级均衡熵</td><td>${m.entropy.toFixed(2)}</td></tr>
+    <tr><td>批内重复率</td><td>${(m.dupRate * 100).toFixed(0)}%</td></tr>
+    <tr><td>子点均数 · 描述均长</td><td>${m.subsAvg.toFixed(1)} · ${m.descAvg.toFixed(0)} 字</td></tr>
+    <tr><td>耗时 · LLM 调用</td><td>${(m.ms / 1000).toFixed(0)} 秒 · ${m.calls} 次</td></tr>
+  </table>`;
+}
+function conceptList(concepts) {
+  return `<p class="mini-note" style="margin:2px 2px 6px;">提案清单(${concepts.length} 条,全部展开):</p>
+    <div class="cards" style="grid-template-columns:1fr;">${concepts.map((c) => `
+    <article class="prop">
+      <div class="prop-head"><span class="layer-tag l${c.layer}">L${c.layer} ${LAYERS[c.layer] || ""}</span><h4>${esc(c.name)}</h4></div>
+      ${c.description ? `<p class="desc">${esc(c.description)}</p>` : ""}
+      ${(c.sub_points || []).length ? `<ul class="subs">${c.sub_points.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>` : ""}
+    </article>`).join("")}</div>`;
+}
+
+// ---------- 后端(interview)API ----------
+async function beApi(method, path, body, retry = true) {
+  const be = state.be;
+  if (!be.token) throw new ApiError(401, "未登录 interview 后端(左侧填账号点登录)");
+  let res;
+  try {
+    res = await fetch(be.url + path, {
+      method,
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + be.token },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    throw new ApiError(0, "后端不可达:" + be.url + " —— 起了吗?");
+  }
+  if (res.status === 401 && retry) { await beLogin(true); return beApi(method, path, body, false); }
+  if (!res.ok) throw new ApiError(res.status, "后端 HTTP " + res.status + " :" + (await res.text()).slice(0, 160));
+  return res.json();
+}
+function setBeState(msg, ok) {
+  const el = $("beState");
+  el.textContent = msg;
+  el.style.color = ok ? "var(--ok)" : "";
+}
+async function beLogin(silent) {
+  const be = state.be;
+  be.url = ($("beUrl").value.trim() || "http://localhost:23333");
+  be.email = $("beEmail").value.trim();
+  be.pass = $("bePass").value;
+  if (!be.email || !be.pass) {
+    if (!silent) setBeState("✗ 请填写邮箱和密码");
+    throw new ApiError(400, "缺少后端账号");
+  }
+  let res;
+  try {
+    res = await fetch(be.url + "/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: be.email, password: be.pass }),
+    });
+  } catch (e) { throw new ApiError(0, "后端不可达:" + be.url); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, "登录失败:" + (data.message || ("HTTP " + res.status)));
+  be.token = data.token;
+  store.set("kgf_be", be);
+  setBeState("✓ 已登录(userId " + data.userId + "),token 已存本机", true);
+}
+
+// ---------- intake 旧逻辑执行(真实接口,零写库) ----------
+async function runIntake(topic, goal, budget) {
+  const t0 = Date.now(); let calls = 0; let lastReply = "";
+  const msgs = [{
+    role: "user",
+    content: `我想学习:${topic}${goal ? `。学习目标:${goal}` : ""}。本次规划请控制在约 ${budget} 个知识点。我的信息已经足够,请直接给出完整规划。`,
+  }];
+  let draft = null;
+  for (let round = 0; round < 3 && !draft; round++) {
+    calls++;
+    const r = await beApi("POST", "/api/study-plan/intake", { messages: msgs, corpusId: null });
+    lastReply = r.reply || "";
+    draft = r.draft;
+    if (!draft) {
+      msgs.push({ role: "assistant", content: lastReply });
+      msgs.push({ role: "user", content: "不用再追问了。按我上面给出的信息直接输出完整规划(draft 不能为 null)。" });
+    }
+  }
+  if (!draft || !draft.points) throw new ApiError(502, "intake 三轮仍未给出 draft:" + lastReply.slice(0, 120));
+  const concepts = (draft.points || [])
+    .filter((p) => p && p.name && String(p.name).trim())
+    .map((p) => ({
+      name: String(p.name).trim(),
+      description: p.note || "",
+      topic: draft.title || "未命名方向",
+      layer: Math.min(5, Math.max(1, p.layer || 1)),
+      sub_points: [],
+      source: "intake",
+    }));
+  return { concepts, ms: Date.now() - t0, calls, reply: lastReply, title: draft.title };
+}
+
+// ---------- 对比主流程 ----------
+async function startDuel() {
+  const topic = $("topic").value.trim();
+  if (!topic) { alert("请填写学习方向"); return; }
+  if (!state.be.token) {
+    try { await beLogin(true); } catch (e) { showError(e.message); return; }
+  }
+  stopPoll();
+  const budget = +$("budget").value || 50;
+  state.duel = {
+    topic, budget,
+    blindLeftIsForge: Math.random() < 0.5,   // 随机左右,盲测
+    revealed: false, pick: "",
+    forge: { id: null, status: "planning", concepts: [], report: null, t0: Date.now(), t1: null, calls: 0, error: null },
+    intake: null,
+  };
+  renderDuel();
+
+  const key = $("llmKey").value.trim();
+  const body = {
+    run_id: uid(), topic,
+    goal: $("goal").value.trim() || null,
+    layer_budget: budget,
+    existing_names: $("existing").value.split("\n").map((s) => s.trim()).filter(Boolean),
+  };
+  if (key) {
+    body.llm = {
+      base_url: $("llmBase").value.trim() || "https://api.deepseek.com",
+      api_key: key,
+      model: $("llmModel").value.trim() || "deepseek-chat",
+      temperature: +$("llmTemp").value || 0.7,
+    };
+  }
+
+  const f = state.duel.forge;
+  const pForge = (async () => {
+    try {
+      const r = await api("POST", "/runs", body);
+      f.id = r.run_id || body.run_id;
+      f.status = "forging";
+      renderDuel();
+      for (let i = 0; i < 150; i++) {   // 2s × 150 = 最长 5 分钟
+        await new Promise((rs) => setTimeout(rs, 2000));
+        const v = await api("GET", "/runs/" + f.id);
+        f.status = v.status;
+        if (v.error) f.error = v.error;
+        if (v.concepts) { f.concepts = v.concepts; f.report = v.report; }
+        if (v.status === "awaiting_review" || FINAL.has(v.status)) { f.t1 = Date.now(); break; }
+        renderDuel();
+      }
+      f.t1 = f.t1 || Date.now();
+      const topicCount = f.report ? Object.keys(f.report.topic_layer || {}).length : 3;
+      f.calls = 1 + 2 * topicCount;   // plan 1 次 + 每主题 起草/裁决 各 1 次
+    } catch (e) { f.error = e.message; }
+    renderDuel();
+  })();
+  const pIntake = (async () => {
+    try { state.duel.intake = await runIntake(topic, $("goal").value.trim(), budget); }
+    catch (e) { state.duel.intake = { error: e.message }; }
+    renderDuel();
+  })();
+  await Promise.allSettled([pForge, pIntake]);
+  renderDuel();
+}
+
+// ---------- 对比渲染 ----------
+const EVAL_DIMS = [["nameq", "名称可考性(像可独立出题的知识单元)"], ["layer", "层级归属准确"], ["desc", "描述与子点质量"], ["overall", "整体质量"]];
+function duelCol(sideId, label) {
+  const d = state.duel;
+  const origin = d.revealed ? (sideId === "forge" ? "kg-forge 锻造炉" : "intake 旧逻辑") : "盲测中 · 来源隐藏";
+  const head = `<h3>方案${label}</h3><span class="origin">${origin}</span>`;
+  if (sideId === "intake") {
+    const it = d.intake;
+    if (!it) return `<div class="duel-col">${head}<div class="forging-note"><span class="spinner"></span>intake 生成中…</div></div>`;
+    if (it.error) return `<div class="duel-col">${head}<div class="alert">${esc(it.error)}</div></div>`;
+    const m = computeMetrics(it.concepts, d.budget, it.ms, it.calls);
+    return `<div class="duel-col">${head}
+      ${renderMatrix(aggReport(it.concepts))}${metricsTable(m)}
+      ${conceptList(it.concepts)}
+      <p class="mini-note">对话末轮:${esc((it.reply || "").slice(0, 90))}</p></div>`;
+  }
+  const f = d.forge;
+  if (f.error) return `<div class="duel-col">${head}<div class="alert">${esc(f.error)}</div></div>`;
+  if (!f.t1) return `<div class="duel-col">${head}<div class="forging-note"><span class="spinner"></span>${f.status === "planning" ? "拆解方向中…" : "并行起草裁决中…"}(轮询 2s)</div></div>`;
+  const m = computeMetrics(f.concepts, d.budget, f.t1 - f.t0, f.calls);
+  return `<div class="duel-col">${head}
+    ${renderMatrix(aggReport(f.concepts))}${metricsTable(m)}
+    ${conceptList(f.concepts)}</div>`;
+}
+function scoreBlock(side, label) {
+  return `<div class="score-card"><h3 style="font-size:14px;">给方案${label}打分(1-5)</h3>
+    ${EVAL_DIMS.map(([k, lab]) => `
+      <div class="score-row"><label>${lab}</label>
+        <input type="range" min="1" max="5" step="1" value="3" data-side="${side}" data-k="${k}"
+               oninput="this.nextElementSibling.textContent=this.value"><span class="v">3</span>
+      </div>`).join("")}</div>`;
+}
+function renderSummary() {
+  const evs = state.evals;
+  if (!evs.length) return `<div class="matrix-card"><h3>盲测累计</h3><p class="mini-note">还没有提交过评测。盲测提交后这里会出现两边的累计均分与胜场。</p></div>`;
+  const agg = {
+    forge: { nameq: 0, layer: 0, desc: 0, overall: 0, n: 0, wins: 0 },
+    intake: { nameq: 0, layer: 0, desc: 0, overall: 0, n: 0, wins: 0 },
+  };
+  for (const e of evs) {
+    for (const id of ["forge", "intake"]) {
+      const a = agg[id];
+      for (const k of ["nameq", "layer", "desc", "overall"]) a[k] += (e.scores[id] && e.scores[id][k]) || 3;
+      a.n++;
+    }
+    const pickId = e.pick === "left" ? (e.leftIsForge ? "forge" : "intake") : (e.leftIsForge ? "intake" : "forge");
+    agg[pickId].wins++;
+  }
+  const row = (id, name) => {
+    const a = agg[id];
+    return `<tr><td>${name}</td><td>${(a.nameq / a.n).toFixed(1)}</td><td>${(a.layer / a.n).toFixed(1)}</td><td>${(a.desc / a.n).toFixed(1)}</td><td>${(a.overall / a.n).toFixed(1)}</td><td>${a.wins} / ${a.n}</td></tr>`;
+  };
+  return `<div class="matrix-card"><h3>盲测累计(${evs.length} 场)</h3>
+    <table class="metrics"><tr><th></th><th>名称</th><th>层级</th><th>描述</th><th>整体</th><th>二选一胜场</th></tr>
+    ${row("forge", "kg-forge")}${row("intake", "intake 旧逻辑")}</table>
+    <p class="mini-note">清空记录:控制台执行 localStorage.removeItem('kgf_evals') 后刷新。</p></div>`;
+}
+function renderIntroDuel() {
+  return `<div class="intro">
+    <h2>双路对比评测(盲测)</h2>
+    <p>同一输入、同一把 key,kg-forge 流水线(拆解→并行起草→裁决→全局去重)对阵现网 intake 旧逻辑(单次结构化生成 50-120 点)。两侧产物都只留在内存/提案里,<b>不写任何数据库</b>——intake 的落库只发生在 confirm,本页永远不会调用它。</p>
+    <ol>
+      <li><b>准备</b> —— 本机起 interview 后端(默认 23333),左侧「interview 后端」卡里登录;kg-forge 的 BYOK 与后端账号配置的 LLM 用<b>同一个模型</b>才公平。</li>
+      <li><b>发起</b> —— 填方向/目标/预算,点「发起对比评测」,两路同时跑。</li>
+      <li><b>盲测</b> —— 甲乙顺序随机、来源隐藏;看矩阵与提案清单后四维打分 + 二选一,提交揭晓身份,累计进底部汇总。</li>
+    </ol>
+  </div>`;
+}
+function renderDuel() {
+  if (state.mode !== "duel") return;
+  const el = $("stageView");
+  const d = state.duel;
+  if (!d) { el.innerHTML = renderIntroDuel(); return; }
+
+  const leftId = d.blindLeftIsForge ? "forge" : "intake";
+  const rightId = d.blindLeftIsForge ? "intake" : "forge";
+  const forgeReady = d.forge.t1 && !d.forge.error;
+  const intakeReady = d.intake && !d.intake.error;
+  const both = forgeReady && intakeReady;
+
+  let html = `
+    <div class="duel-meta">
+      <span class="chip run">对比中:${esc(d.topic)}</span>
+      <span>预算 ${d.budget} · 已用时 <b id="duelElapsed" style="font-family:var(--mono)">${((Date.now() - d.forge.t0) / 1000).toFixed(0)}s</b></span>
+      ${both && !d.revealed ? '<span class="chip review">两路就绪 · 请盲测打分</span>' : ""}
+      ${d.revealed ? '<span class="chip ok">已揭晓</span>' : ""}
+    </div>`;
+
+  if (d.revealed) {
+    const yourPickName = d.pick ? (d.pick === "left" ? "方案甲" : "方案乙") : "(未选)";
+    html += `<div class="reveal-banner">揭晓:方案甲 = <b>${d.blindLeftIsForge ? "kg-forge 锻造炉" : "intake 旧逻辑"}</b>,方案乙 = <b>${d.blindLeftIsForge ? "intake 旧逻辑" : "kg-forge 锻造炉"}</b>。你选的是 <b>${yourPickName}</b>。评分已计入底部累计表。</div>`;
+  }
+
+  html += `<div class="duel">${duelCol(leftId, "甲")}${duelCol(rightId, "乙")}</div>`;
+
+  if (both && !d.revealed) {
+    html += `
+      <div class="duel-score-grid">${scoreBlock("left", "甲")}${scoreBlock("right", "乙")}</div>
+      <div class="pick-row">
+        <button class="pick ${d.pick === "left" ? "on" : ""}" id="pickLeft">二选一:我会用方案甲</button>
+        <button class="pick ${d.pick === "right" ? "on" : ""}" id="pickRight">二选一:我会用方案乙</button>
+      </div>
+      <button class="btn btn-primary" id="submitEval" style="max-width:340px;">提交并揭晓来源</button>`;
+  }
+  if (d.revealed) {
+    html += `<button class="btn btn-primary" id="againDuel" style="max-width:340px;">再来一组(换方向/换预算)</button>`;
+  }
+  html += renderSummary();
+  el.innerHTML = html;
+
+  const pl = $("pickLeft"), pr = $("pickRight");
+  if (pl) pl.onclick = () => { d.pick = "left"; renderDuel(); };
+  if (pr) pr.onclick = () => { d.pick = "right"; renderDuel(); };
+  const se = $("submitEval");
+  if (se) se.onclick = submitEval;
+  const ag = $("againDuel");
+  if (ag) ag.onclick = () => { state.duel = null; renderDuel(); };
+}
+function submitEval() {
+  const d = state.duel;
+  if (!d) return;
+  if (!d.pick) { alert("先做二选一:你会用哪个方案"); return; }
+  const read = (side) => {
+    const o = {};
+    document.querySelectorAll(`.score-row input[data-side="${side}"]`).forEach((i) => { o[i.dataset.k] = +i.value; });
+    return o;
+  };
+  const L = read("left"), R = read("right");
+  const rec = {
+    ts: new Date().toLocaleString("zh-CN"),
+    topic: d.topic,
+    leftIsForge: d.blindLeftIsForge,
+    scores: { forge: d.blindLeftIsForge ? L : R, intake: d.blindLeftIsForge ? R : L },
+    pick: d.pick,
+    metrics: {
+      forge: computeMetrics(d.forge.concepts, d.budget, (d.forge.t1 || Date.now()) - d.forge.t0, d.forge.calls),
+      intake: d.intake ? computeMetrics(d.intake.concepts, d.budget, d.intake.ms || 0, d.intake.calls || 0) : null,
+    },
+  };
+  state.evals.unshift(rec);
+  state.evals = state.evals.slice(0, 50);
+  store.set("kgf_evals", state.evals);
+  d.revealed = true;
+  renderDuel();
+}
+
+// ---------- 模式切换 ----------
+function setMode(m) {
+  state.mode = m;
+  stopPoll();
+  $("tabSolo").classList.toggle("on", m === "solo");
+  $("tabDuel").classList.toggle("on", m === "duel");
+  $("backendCard").style.display = m === "duel" ? "" : "none";
+  $("duelBtn").style.display = m === "duel" ? "" : "none";
+  $("startBtn").style.display = m === "solo" ? "" : "none";
+  if (m === "duel") renderDuel();
+  else renderStage();
+}
+
+/* ================================================================
    事件绑定与启动
    ================================================================ */
 $("secret").value = state.secret;
@@ -915,6 +1372,18 @@ $("testSecret").addEventListener("click", testSecret);
 $("budgetRange").addEventListener("input", () => { $("budget").value = $("budgetRange").value; });
 $("budget").addEventListener("change", () => { $("budgetRange").value = $("budget").value; });
 $("startBtn").addEventListener("click", startForge);
+// ---- 对比评测模式 ----
+(() => {
+  const be = state.be || {};
+  $("beUrl").value = be.url || "http://localhost:23333";
+  $("beEmail").value = be.email || "";
+  $("bePass").value = be.pass || "";
+  if (be.token) setBeState("✓ 有已存 token(失效会自动用保存的账号重登)", true);
+})();
+$("tabSolo").addEventListener("click", () => setMode("solo"));
+$("tabDuel").addEventListener("click", () => setMode("duel"));
+$("beLogin").addEventListener("click", () => beLogin().catch((e) => setBeState("✗ " + e.message)));
+$("duelBtn").addEventListener("click", startDuel);
 $("hist").addEventListener("click", (ev) => {
   const del = ev.target.closest(".h-del");
   const li = ev.target.closest("li[data-i]");
