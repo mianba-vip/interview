@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 /** 设置页：读取 / 更新「当前登录用户」的 AI 模型配置（provider / base-url / api-key / model / temperature）。 */
