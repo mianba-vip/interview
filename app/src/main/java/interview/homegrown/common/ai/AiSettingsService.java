@@ -160,7 +160,6 @@ public class AiSettingsService {
                 : new AiConfig(startup.getDefaultProvider(), cfg.getBaseUrl(), "",
                         cfg.getModel(), cfg.getTemperature(), cfg.getReasoningEffort());
     }
-}
 
     /**
      * 拉取 Provider 的模型清单(OpenAI 兼容 GET {base}/models),供设置页
@@ -212,4 +211,4 @@ public class AiSettingsService {
             throw new ResponseStatusException(BAD_REQUEST, "请求被中断");
         }
     }
-
+}
