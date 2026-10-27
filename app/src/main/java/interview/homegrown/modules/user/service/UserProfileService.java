@@ -62,7 +62,8 @@ public class UserProfileService {
                 user.getNickname(),
                 user.getGender(),
                 user.getPhone(),
-                user.getBirthday()
+                user.getBirthday(),
+                user.getRole() == null ? "USER" : user.getRole()
         );
     }
 
@@ -81,6 +82,7 @@ public class UserProfileService {
             String nickname,
             String gender,
             String phone,
-            LocalDate birthday
+            LocalDate birthday,
+            String role          // USER / ADMIN:前端据此显示管理入口
     ) {}
 }
