@@ -35,6 +35,15 @@ public class AiSettingsController {
                 "supportsVision", settings.supportsVision());
     }
 
+    /**
+     * 拉取模型清单(设置页「获取模型」):body 可只带 baseUrl/apiKey,
+     * 缺省用当前用户已存配置的值。返回模型 ID 列表。
+     */
+    @PostMapping("/models")
+    public List<String> models(@RequestBody ModelsRequest req) {
+        return settings.fetchModels(settings.currentUserId(), req.baseUrl(), req.apiKey());
+    }
+
     @PostMapping
     public Map<String, Object> update(@RequestBody AiConfig cfg) {
         Long userId = settings.currentUserId();
@@ -44,4 +53,6 @@ public class AiSettingsController {
         settings.update(userId, cfg);
         return Map.of("ok", true, "provider", cfg.provider(), "model", cfg.model());
     }
+
+    public record ModelsRequest(String baseUrl, String apiKey) {}
 }

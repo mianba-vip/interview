@@ -8,8 +8,17 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.server.ResponseStatusException;
+
+import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -152,3 +161,55 @@ public class AiSettingsService {
                         cfg.getModel(), cfg.getTemperature(), cfg.getReasoningEffort());
     }
 }
+
+    /**
+     * 拉取 Provider 的模型清单(OpenAI 兼容 GET {base}/models),供设置页
+     * 「获取模型」按钮使用——替代写死的预设清单。
+     * key 优先级:本次请求显式携带(用户正在填的新 key)> 当前登录用户已存配置。
+     * key 只在本方法内存中使用,不落任何存储。
+     */
+    public List<String> fetchModels(Long userId, String baseUrl, String apiKey) {
+        AiConfig saved = userConfig(userId);
+        String base = (baseUrl == null || baseUrl.isBlank()) ? (saved == null ? "" : saved.baseUrl()) : baseUrl.trim();
+        String key = (apiKey == null || apiKey.isBlank()) ? (saved == null ? "" : saved.apiKey()) : apiKey.trim();
+        if (base.isBlank()) throw new ResponseStatusException(BAD_REQUEST, "缺少 Base URL");
+        if (key == null || key.isBlank()) throw new ResponseStatusException(BAD_REQUEST, "请先填写 API Key(或已保存的配置里有 Key)");
+        String url = base.endsWith("/") ? base + "models" : base + "/models";
+        try {
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Authorization", "Bearer " + key)
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(8))
+                    .build()
+                    .send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() == 401 || resp.statusCode() == 403) {
+                throw new ResponseStatusException(BAD_REQUEST, "API Key 无效(" + resp.statusCode() + ")");
+            }
+            if (resp.statusCode() / 100 != 2) {
+                throw new ResponseStatusException(BAD_REQUEST, "Provider 返回 HTTP " + resp.statusCode());
+            }
+            List<String> ids = new ArrayList<>();
+            var data = objectMapper.readTree(resp.body()).path("data");
+            if (data.isArray()) {
+                for (var n : data) {
+                    String id = n.path("id").asText("");
+                    if (!id.isBlank()) ids.add(id);
+                }
+            }
+            ids.sort(String::compareToIgnoreCase);
+            if (ids.isEmpty()) throw new ResponseStatusException(BAD_REQUEST, "Provider 未返回任何模型(响应格式不兼容)");
+            return ids;
+        } catch (ResponseStatusException e) {
+            throw e;
+        } catch (java.io.IOException e) {
+            throw new ResponseStatusException(BAD_REQUEST, "无法连接 " + url + ":" + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(BAD_REQUEST, "请求被中断");
+        }
+    }
+
