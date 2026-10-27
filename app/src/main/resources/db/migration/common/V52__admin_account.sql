@@ -1,15 +1,19 @@
--- 管理员账号交接(2026-10-27):新建专用管理员,收回个人账号的管理员权限。
--- 登录体系要求邮箱格式(@Email 校验),用户名 admin 落为 admin@mianba.vip。
--- 密码哈希由 pgcrypto 的 bcrypt 生成,与 Spring BCryptPasswordEncoder 算法互认($2a$)。
--- ⚠️ 密码出现在迁移文件里(随仓库保存):上线后建议尽快改密,或接受私有仓库风险。
+-- 管理员账号引导(2026-10-27):仓库不保存任何密码(密钥卫生)。
+-- 本迁移只创建管理员身份,密码是一个无人知晓的随机 bcrypt(不可登录),
+-- 初始密码由现任管理员在「人员管理 → 设密码」设置;交接完成后由新管理员
+-- 在人员管理页把个人账号降回 USER(不在迁移里降级,否则引导期间无人可操作)。
+--
+-- 交接步骤:
+--   1. 部署本版本后,用现任管理员登录 → 人员管理 → 给 admin@mianba.vip 设初始密码
+--   2. 登出,用 admin@mianba.vip 登录,确认侧栏出现「管理」组
+--   3. 人员管理 → 把 masuchao2023@163.com 撤销管理员
+-- 注:登录体系要求邮箱格式(@Email 校验),用户名 admin 落为 admin@mianba.vip。
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 INSERT INTO app_user (email, password_hash, username, nickname, verified, role, status)
-VALUES ('admin@mianba.vip', crypt('035657644', gen_salt('bf', 10)), 'admin', '管理员', TRUE, 'ADMIN', 1)
+VALUES ('admin@mianba.vip',
+        crypt(gen_random_uuid()::text || gen_random_uuid()::text, gen_salt('bf', 10)),
+        'admin', '管理员', TRUE, 'ADMIN', 1)
 ON CONFLICT (email) DO UPDATE
     SET role = 'ADMIN',
-        password_hash = EXCLUDED.password_hash,
         verified = TRUE;
-
--- 原个人账号回归普通用户
-UPDATE app_user SET role = 'USER' WHERE email = 'masuchao2023@163.com';

@@ -8,6 +8,7 @@ import interview.homegrown.modules.user.repository.AppUserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -15,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.FORBIDDEN;
@@ -40,15 +42,17 @@ public class AdminService {
     private final ConceptRepository conceptRepo;
     private final KgForgeRunRepository forgeRunRepo;
     private final JdbcTemplate jdbc;
+    private final PasswordEncoder passwordEncoder;
 
     public AdminService(AppUserRepository userRepo, StudyPlanRepository planRepo,
                         ConceptRepository conceptRepo, KgForgeRunRepository forgeRunRepo,
-                        JdbcTemplate jdbc) {
+                        JdbcTemplate jdbc, PasswordEncoder passwordEncoder) {
         this.userRepo = userRepo;
         this.planRepo = planRepo;
         this.conceptRepo = conceptRepo;
         this.forgeRunRepo = forgeRunRepo;
         this.jdbc = jdbc;
+        this.passwordEncoder = passwordEncoder;
     }
 
     // ------------------------------------------------------------- 鉴权
@@ -128,5 +132,24 @@ public class AdminService {
         userRepo.save(target);
         log.info("管理员 {} 将用户 {}({}) 角色设为 {}", adminId, targetUserId, target.getEmail(), role);
         return toView(target);
+    }
+
+    /**
+     * 重置任意用户密码(含引导期设初始密码)。管理员权限即凭证,不走邮箱验证码
+     * ——自助改密(UserPasswordController)才需要邮箱码,虚构邮箱的管理员账号
+     * 正是靠本通道完成初始化。新密码只进日志外的 bcrypt 哈希,绝不落明文。
+     */
+    @Transactional
+    public Map<String, Object> resetPassword(Long adminId, Long targetUserId, String newPassword) {
+        requireAdmin(adminId);
+        if (newPassword == null || newPassword.length() < 6 || newPassword.length() > 64) {
+            throw new ResponseStatusException(BAD_REQUEST, "新密码长度需为 6-64 位");
+        }
+        AppUser target = userRepo.findById(targetUserId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "用户不存在"));
+        target.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepo.save(target);
+        log.info("管理员 {} 重置了用户 {}({}) 的密码", adminId, targetUserId, target.getEmail());
+        return Map.of("ok", true);
     }
 }

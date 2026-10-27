@@ -34,5 +34,12 @@ public class AdminController {
         return Map.of("ok", true, "user", updated);
     }
 
+    /** 重置任意用户密码(引导期设初始密码/管理员运维通道):{"newPassword": "..."}。 */
+    @PutMapping("/users/{id}/password")
+    public Map<String, Object> resetPassword(@PathVariable Long id, @RequestBody PasswordRequest req) {
+        return adminService.resetPassword(CurrentUser.id(), id, req.newPassword());
+    }
+
     public record RoleRequest(String role) {}
+    public record PasswordRequest(String newPassword) {}
 }
