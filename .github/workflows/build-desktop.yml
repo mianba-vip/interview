@@ -5,10 +5,11 @@ on:
   push:
     branches: [main]
 
-# 同一时间只跑一个打包流水线；新 push 直接取消旧 run（避免旧产物覆盖新 release）
+# 发布串行执行，保留排队的 push，防止两个 run 分配到同一版本或发布中途被取消。
 concurrency:
   group: desktop-build
-  cancel-in-progress: true
+  cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: write
@@ -20,8 +21,52 @@ env:
   MIANBA_SERVER: ${{ secrets.MIANBA_SERVER }}
 
 jobs:
+  prepare:
+    name: Prepare desktop release version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout source and all version tags
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Test release version and cloud build behavior
+        run: npm --prefix interview-desktop run test:release
+
+      - name: Prepare version once for all platforms
+        id: version
+        shell: bash
+        run: |
+          # main push 自动递增；手动 workflow_dispatch 保持只构建、不递增或发布的语义。
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
+            VERSION="$(node interview-desktop/scripts/next-release-version.js)"
+          else
+            VERSION="$(node -p "require('./interview-desktop/package.json').version")"
+          fi
+          npm --prefix interview-desktop version "$VERSION" --no-git-tag-version --ignore-scripts --allow-same-version
+          printf 'version=%s\n' "$VERSION" >> "$GITHUB_OUTPUT"
+          printf '### Desktop version: %s\n' "$VERSION" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload versioned manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-release-manifests
+          path: |
+            interview-desktop/package.json
+            interview-desktop/package-lock.json
+          if-no-files-found: error
+
   build:
     name: Build ${{ matrix.label }}
+    needs: prepare
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -40,6 +85,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Download shared versioned manifests
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-release-manifests
+          path: interview-desktop
 
       # 前端 SPA 已拆分到独立仓库 mianba-vip/mianba-web（公开）：
       # 匿名克隆到 frontend/ 路径，供桌面打包脚本引用（无需任何凭据）
@@ -114,22 +167,11 @@ jobs:
   release:
     name: Publish GitHub release
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Read version
-        id: version
-        shell: bash
-        run: |
-          VERSION="$(node -p "require('./interview-desktop/package.json').version")"
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid desktop version: $VERSION" >&2
-            exit 1
-          fi
-          printf 'version=%s\n' "$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Download packages
         uses: actions/download-artifact@v4
@@ -141,9 +183,23 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         shell: bash
         run: |
-          TAG="v${{ steps.version.outputs.version }}"
+          TAG="v${RELEASE_VERSION}"
+          # 安装包的更新清单必须与标签版本相同，避免更新器收到版本不一致的产物。
+          shopt -s nullglob
+          METADATA=(release-assets/latest*.yml)
+          if [ "${#METADATA[@]}" -eq 0 ]; then
+            echo 'No updater metadata found' >&2
+            exit 1
+          fi
+          for file in "${METADATA[@]}"; do
+            grep -Fxq "version: $RELEASE_VERSION" "$file" || {
+              echo "Updater version mismatch: $file (expected $RELEASE_VERSION)" >&2
+              exit 1
+            }
+          done
           mapfile -d '' ASSETS < <(find release-assets -maxdepth 1 -type f \
             \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.yml' -o -name '*.blockmap' \) \
             -print0)

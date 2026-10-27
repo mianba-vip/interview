@@ -269,6 +269,14 @@ npm start
 
 **CI（推荐）**：推送到 `main` 后，GitHub Actions 在 Windows / macOS Runner 上构建**云端模式**安装包（只含前端），并把安装包、blockmap、`latest*.yml` 发布到 GitHub Release。需要在仓库 **Settings → Secrets** 配置 `MIANBA_SERVER`（后端服务器地址，用于烘焙前端 API 地址）。
 
+发布顺序为：`main push → prepare 计算新版本并更新两份版本文件 → Windows/macOS 共用该版本打包 → 校验 latest*.yml → 发布 v<版本号>`。
+新版本取源码 `interview-desktop/package.json` 与已有稳定 `vX.Y.Z` 标签中的最高版本，再将 patch 加一，例如 `v0.6.6 → v0.6.7 → v0.6.8`。
+`prepare` 只计算一次，并通过 artifact 将更新后的 `package.json` / `package-lock.json` 交给两个平台；Release 直接使用相同输出版本，避免包内版本与标签不一致。
+
+正式版本以 Git 标签为记录，CI 中的版本文件修改只用于本次打包，源码保留基础版本；因此连续发布无需手动修改文件，也不需要机器人推送版本提交回 `main`。
+流水线按队列串行执行（`queue: max`，最多排队 100 次），避免连续推送时版本冲突或取消正在上传的 Release。相关配置见 [GitHub 并发控制文档](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)。
+手动运行 `workflow_dispatch` 沿用源码版本，仅构建、不递增或发布。本地 `build-cloud.js` 构建和调试也不再修改版本。
+
 **本地一键发布（云端模式）**：
 
 ```bash
@@ -292,7 +300,9 @@ npm run dist            # 当前平台
 npm run dist:win:local  # Windows（需在 macOS 上跑脚本）
 ```
 
-构建产物位于 `dist-electron/`（本地模式）或 `dist-electron-cloud/`（云端模式）。`release:local` / `release:win:local` 仅用于本地模式的分发（调试 / 离线场景），**不要**用作正式发布通道——正式发布请用 CI 或 `npm run release`（云模式）。发布新版本时先更新 `interview-desktop/package.json` 与 `package-lock.json` 中的版本号，客户端只有在 Release 版本高于当前安装版本时才会提示更新。更新日志位于：
+构建产物位于 `dist-electron/`（本地模式）或 `dist-electron-cloud/`（云端模式）。`release:local` / `release:win:local` 仅用于本地模式的分发（调试 / 离线场景），**不要**用作正式发布通道——正式发布推荐推送 `main` 使用 CI 自动递增版本。
+若绕过 CI 使用本地 `npm run release`，仍需先确定一个高于已发布版本的版本号，并在桌面目录执行 `npm version <版本号> --no-git-tag-version` 同步两份版本文件；普通构建不会代为递增。
+客户端只有在 Release 版本高于当前安装版本时才会提示更新。更新日志位于：
 
 ### 服务器部署
 
