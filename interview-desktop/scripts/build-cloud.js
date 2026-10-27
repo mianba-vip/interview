@@ -9,6 +9,24 @@ const path = require('path');
 const DESKTOP = path.resolve(__dirname, '..');
 const rawServer = (process.env.MIANBA_SERVER || '').trim();
 
+// ── 自动版本号(2026-10):patch 位每次构建 +1(0.6.6 → 0.6.7 → 0.6.8 …)。
+// 解决"忘了手动改版本 → 产物同名互相覆盖 → 用户端 electron-updater 检测不到新版本"。
+// 主.次版本(major.minor)仍手动管理(改 package.json 即可);VERSION_NO_BUMP=1 可跳过(调试)。
+(function autoVersion() {
+  if (process.env.VERSION_NO_BUMP === '1') return;
+  const pkgPath = path.join(DESKTOP, 'package.json');
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  const mm = String(pkg.version || '0.0.0').split('.');
+  const base = `${Number(mm[0] || 0)}.${Number(mm[1] || 0)}`;
+  const patch = Number(mm[2] || 0) + 1;
+  const next = `${base}.${patch}`;
+  if (pkg.version !== next) {
+    pkg.version = next;
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+    console.log(`▸ 自动版本号:${next}(原 ${base}.x;跳过用 VERSION_NO_BUMP=1)`);
+  }
+})();
+
 if (!rawServer) {
   console.error(
     '缺少 MIANBA_SERVER 环境变量，例如：\n  MIANBA_SERVER=https://api.example.com npm run dist:cloud'
