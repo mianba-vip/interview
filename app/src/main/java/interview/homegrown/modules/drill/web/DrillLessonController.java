@@ -40,13 +40,15 @@ public class DrillLessonController {
     private final LessonQaGenerator lessonQaGenerator;
     private final DrillSupport support;
     private final interview.homegrown.modules.drill.service.QuestionPrewarmService prewarmService;
+    private final interview.homegrown.modules.drill.service.ConceptPoolService conceptPool;
 
     public DrillLessonController(ConceptRepository conceptRepo, ConceptLessonRepository conceptLessonRepo,
                                  SubPointPassRepository subPointPassRepo, LessonQaRepository lessonQaRepo,
                                  DrillRunRepository runRepo, ProgressContextService progressContext,
                                  LessonGenerator lessonGenerator, LessonQaGenerator lessonQaGenerator,
                                  DrillSupport support,
-                                 interview.homegrown.modules.drill.service.QuestionPrewarmService prewarmService) {
+                                 interview.homegrown.modules.drill.service.QuestionPrewarmService prewarmService,
+                                 interview.homegrown.modules.drill.service.ConceptPoolService conceptPool) {
         this.conceptRepo = conceptRepo;
         this.conceptLessonRepo = conceptLessonRepo;
         this.subPointPassRepo = subPointPassRepo;
@@ -57,6 +59,21 @@ public class DrillLessonController {
         this.lessonQaGenerator = lessonQaGenerator;
         this.support = support;
         this.prewarmService = prewarmService;
+        this.conceptPool = conceptPool;
+    }
+
+    /**
+     * 按概念 ID 取概念,并校验对当前用户可见(全局种子 + 自己方向;见 ConceptPoolService)。
+     * 2026-10-27 越权审计修复:此前 7 处裸 findById,任何登录用户可用他人 conceptId
+     * 读讲解/子点,甚至触发拆解写回他人 lesson_outline。
+     */
+    private Concept requireVisibleConcept(Long uid, Long conceptId) {
+        Concept concept = requireVisibleConcept(uid, conceptId);
+        boolean visible = conceptPool.visiblePool(uid).stream().anyMatch(c -> c.getId().equals(conceptId));
+        if (!visible) {
+            throw new ResponseStatusException(NOT_FOUND, "知识点不存在");
+        }
+        return concept;
     }
 
 
@@ -79,8 +96,7 @@ public class DrillLessonController {
     @PostMapping("/{conceptId}/outline")
     public OutlineView outline(@PathVariable Long conceptId) {
         Long uid = CurrentUser.id();
-        Concept concept = conceptRepo.findById(conceptId)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+        Concept concept = requireVisibleConcept(uid, conceptId);
 
         List<String> subPoints = lessonGenerator.outlineFromJson(concept.getLessonOutline());
         boolean cached = !subPoints.isEmpty();
@@ -96,8 +112,7 @@ public class DrillLessonController {
     public OutlineView addSubPoint(@PathVariable Long conceptId,
                                    @RequestBody SubPointEditRequest req) {
         Long uid = CurrentUser.id();
-        Concept concept = conceptRepo.findById(conceptId)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+        Concept concept = requireVisibleConcept(uid, conceptId);
         String sp = req.subPoint() == null ? "" : req.subPoint().trim();
         if (sp.isEmpty()) {
             throw new ResponseStatusException(BAD_REQUEST, "子知识点不能为空");
@@ -122,8 +137,7 @@ public class DrillLessonController {
     public OutlineView removeSubPoint(@PathVariable Long conceptId,
                                       @RequestBody SubPointEditRequest req) {
         Long uid = CurrentUser.id();
-        Concept concept = conceptRepo.findById(conceptId)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+        Concept concept = requireVisibleConcept(uid, conceptId);
         String sp = req.subPoint() == null ? "" : req.subPoint().trim();
         List<String> subs = new java.util.ArrayList<>(lessonGenerator.outlineFromJson(concept.getLessonOutline()));
         boolean removed = subs.removeIf(s -> s.trim().equalsIgnoreCase(sp));
@@ -168,8 +182,7 @@ public class DrillLessonController {
     public Map<String, Object> subPointPass(@PathVariable Long conceptId,
                                             @RequestBody SubPointPassRequest req) {
         Long uid = CurrentUser.id();
-        conceptRepo.findById(conceptId)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+        requireVisibleConcept(uid, conceptId);
         if (req.subPoint() == null || req.subPoint().isBlank()) {
             throw new ResponseStatusException(BAD_REQUEST, "子知识点不能为空");
         }
@@ -195,8 +208,7 @@ public class DrillLessonController {
                                                         @RequestParam String subPoint,
                                                         @RequestParam(defaultValue = "false") boolean refresh) {
         Long uid = CurrentUser.id();
-        Concept concept = conceptRepo.findById(conceptId)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+        Concept concept = requireVisibleConcept(uid, conceptId);
         final String sub = subPoint.trim();
         if (sub.isEmpty()) {
             throw new ResponseStatusException(BAD_REQUEST, "subPoint 不能为空");
@@ -286,8 +298,7 @@ public class DrillLessonController {
             @RequestParam String subPoint,
             @RequestBody LessonChatRequest req) {
         Long uid = CurrentUser.id();
-        Concept concept = conceptRepo.findById(conceptId)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "知识点不存在"));
+        Concept concept = requireVisibleConcept(uid, conceptId);
         final String sub = subPoint.trim();
         if (sub.isEmpty()) throw new ResponseStatusException(BAD_REQUEST, "subPoint 不能为空");
         String question = req.question() == null ? "" : req.question().trim();

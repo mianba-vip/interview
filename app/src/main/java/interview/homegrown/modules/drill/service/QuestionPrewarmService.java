@@ -30,12 +30,14 @@ public class QuestionPrewarmService {
     private final SelectionService selectionService;
     private final DrillSupport support;
     private final QuestionPrewarmStore store;
+    private final ConceptPoolService conceptPool;
 
     public QuestionPrewarmService(SelectionService selectionService, DrillSupport support,
-                                  QuestionPrewarmStore store) {
+                                  QuestionPrewarmStore store, ConceptPoolService conceptPool) {
         this.selectionService = selectionService;
         this.support = support;
         this.store = store;
+        this.conceptPool = conceptPool;
     }
 
     /**
@@ -45,6 +47,10 @@ public class QuestionPrewarmService {
      */
     public boolean prewarm(Long uid, Long conceptId, String focus) {
         if (focus == null || focus.isBlank()) return false;
+        // 越权审计修复(2026-10-27):概念必须对当前用户可见,否则任何登录用户
+        // 可用他人 conceptId 触发预热,读他人概念并烧自己的 key 生成无主题目。
+        boolean visible = conceptPool.visiblePool(uid).stream().anyMatch(c -> c.getId().equals(conceptId));
+        if (!visible) return false;
         if (!store.tryBegin(uid, conceptId, focus)) return false;
 
         // LLM 调用依赖 ThreadLocal 上下文（登录用户的 BYOK 配置、桌面端 X-LLM-Key 头），
