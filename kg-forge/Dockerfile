@@ -1,5 +1,13 @@
 FROM python:3.12-slim
 
+# pip 全局走清华镜像 + 加大超时/重试。必须用 ENV 而不是每行 -i:
+# `pip install .` 触发 PEP 517 构建隔离时,子进程只继承环境变量,
+# 不吃命令行的 -i——setuptools 等构建依赖会直连 files.pythonhosted.org,
+# 国内网络读超时导致构建随机失败(2026-10-28 踩坑)。
+ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+    PIP_DEFAULT_TIMEOUT=60 \
+    PIP_RETRIES=5
+
 WORKDIR /app
 # 依赖层与代码层分离：只改 Python 代码不再触发全量重下依赖（层缓存以
 # requirements.txt 内容为键）。版本全部钉死——2026-10 两次踩坑（psycopg
