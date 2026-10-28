@@ -63,6 +63,12 @@ public class ForgeController {
         return forge.approve(CurrentUser.id(), id, body.path("concepts"));
     }
 
+    /** 取消锻造(排队中/锻造中掐断止损,待审核直接丢弃):终态 CANCELLED,区别于拒绝提案。 */
+    @PostMapping("/runs/{id}/cancel")
+    public Map<String, Object> cancel(@PathVariable Long id) {
+        return forge.cancel(CurrentUser.id(), id);
+    }
+
     @PostMapping("/runs/{id}/reject")
     public Map<String, Object> reject(@PathVariable Long id) {
         return forge.reject(CurrentUser.id(), id);

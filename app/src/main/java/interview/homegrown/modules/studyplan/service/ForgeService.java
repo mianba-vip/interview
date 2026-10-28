@@ -104,6 +104,12 @@ public class ForgeService {
     public void runJob(Long runId, Long userId) {
         KgForgeRun run = runRepo.findByUserIdAndId(userId, runId).orElse(null);
         if (run == null) return;
+        // 排队期间被取消/已终结的 run 不再派发:否则会把 CANCELLED/REJECTED 复活成
+        // RUNNING 继续锻造(白烧 key),失败还会落到 worker 的兜底错误文案。
+        if (List.of("CANCELLED", "REJECTED", "APPROVED", "FAILED").contains(run.getStatus())) {
+            log.info("任务已终结,跳过派发 runId={} status={}", runId, run.getStatus());
+            return;
+        }
         run.setStatus("RUNNING");
         runRepo.save(run);
 
@@ -145,16 +151,20 @@ public class ForgeService {
         // (markJobFailure,如 sidecar 不可达),sidecar 对从未见过的 thread 按派发
         // 窗口语义返回 running——若拿它同步,会把 FAILED 复活成 RUNNING,
         // 前端永远转"锻造中"而列表显示失败(2026-10-28 实测踩中)。终态必须粘住。
-        if ("FAILED".equals(run.getStatus())) {
+        if (List.of("FAILED", "APPROVED", "REJECTED", "CANCELLED").contains(run.getStatus())) {
             Map<String, Object> out = new java.util.HashMap<>();
             out.put("id", run.getId());
-            out.put("status", "FAILED");
-            out.put("error", run.getError() == null ? "锻造任务失败" : run.getError());
+            out.put("status", run.getStatus());
+            out.put("conceptCount", run.getConceptCount());
+            // 附原始参数:终态详情页的「重新生成」按原参数再发起一次
+            out.put("topic", run.getTopic());
+            out.put("goal", run.getGoal());
+            out.put("layerBudget", run.getLayerBudget());
+            out.put("planId", run.getPlanId());
+            if ("FAILED".equals(run.getStatus())) {
+                out.put("error", run.getError() == null ? "锻造任务失败" : run.getError());
+            }
             return out;
-        }
-        if (List.of("APPROVED", "REJECTED").contains(run.getStatus())) {
-            return Map.of("id", run.getId(), "status", run.getStatus(),
-                    "conceptCount", run.getConceptCount());
         }
         JsonNode remote;
         try {
@@ -276,6 +286,30 @@ public class ForgeService {
         return Map.of("ok", true);
     }
 
+    /**
+     * 取消锻造(与"拒绝提案"语义分离):终态一律 CANCELLED。
+     * PENDING/RUNNING → 掐断 sidecar 后台任务止损;AWAITING_REVIEW → finalize 收尾图。
+     */
+    public Map<String, Object> cancel(Long userId, Long runId) {
+        KgForgeRun run = owned(userId, runId);
+        String prior = run.getStatus();
+        if (!List.of("AWAITING_REVIEW", "RUNNING", "PENDING").contains(prior)) {
+            throw new ResponseStatusException(CONFLICT, "当前状态不可取消: " + run.getStatus());
+        }
+        run.setStatus("CANCELLED");
+        runRepo.save(run);
+        try {
+            if ("AWAITING_REVIEW".equals(prior)) {
+                post("/runs/" + run.getThreadId() + "/finalize", Map.of("decision", "cancelled"));
+            } else {
+                post("/runs/" + run.getThreadId() + "/cancel", Map.of());
+            }
+        } catch (Exception e) {
+            log.warn("通知 sidecar 取消失败 runId={}: {}", runId, e.getMessage());
+        }
+        return Map.of("ok", true);
+    }
+
     // ------------------------------------------------------------- 内部
 
     /**
@@ -287,6 +321,7 @@ public class ForgeService {
             case "awaiting_review" -> "AWAITING_REVIEW";
             case "approved" -> "APPROVED";
             case "rejected" -> "REJECTED";
+            case "cancelled" -> "CANCELLED";
             case "failed" -> "FAILED";
             default -> "RUNNING";   // planning / forging / running / 未知
         };

@@ -147,15 +147,17 @@ async def _run(req: ForgeRequest) -> None:
     try:
         await GRAPH.ainvoke(state_in, config=_config(req.run_id))
     except asyncio.CancelledError:
-        # 用户取消:写 rejected 终态(与拒绝同语义,Java/前端无需新增枚举),再放行取消
+        # 用户取消:写 cancelled 终态后放行取消语义。
+        # 注意:被取消的任务里再 await 会立刻再次抛 CancelledError,
+        # 必须用 asyncio.shield 保护状态写入,否则 cancelled 永远写不进去。
         log.info("锻造被用户取消 run_id=%s", req.run_id)
         try:
-            await GRAPH.aupdate_state(
+            await asyncio.shield(GRAPH.aupdate_state(
                 _config(req.run_id),
-                {"status": "rejected", "error": None},
+                {"status": "cancelled", "error": None},
                 as_node="assemble",
-            )
-        except Exception:  # noqa: BLE001
+            ))
+        except (Exception, asyncio.CancelledError):  # noqa: BLE001
             log.exception("写入取消状态失败 run_id=%s", req.run_id)
         raise
     except Exception as e:  # noqa: BLE001

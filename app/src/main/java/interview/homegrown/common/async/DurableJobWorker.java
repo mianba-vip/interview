@@ -93,7 +93,10 @@ public class DurableJobWorker {
             observed.outcome(store.complete(job) ? "success" : "lease_lost");
         } catch (Exception e) {
             log.error("异步任务失败 jobId={}, type={}, attempt={}", job.id(), job.type(), job.attempts(), e);
-            String safeReason = "执行失败（" + e.getClass().getSimpleName() + "），可在配置和日志检查后重试";
+            // 优先透出真实可读原因(kg-forge 不可达/LLM 未配置等);没有消息才退回类名兜底
+            String safeReason = (e.getMessage() != null && !e.getMessage().isBlank())
+                    ? e.getMessage()
+                    : "执行失败（" + e.getClass().getSimpleName() + "），可在配置和日志检查后重试";
             Boolean dead = store.fail(job, safeReason);
             if (dead != null) {
                 if (dead) telemetry.deadLetter(job.type());

@@ -151,7 +151,7 @@ def assemble_node(state: ForgeState) -> dict:
         "report": report.model_dump(),
     })
     status = decision.get("decision") if isinstance(decision, dict) else "rejected"
-    return {"status": status if status in ("approved", "rejected") else "rejected",
+    return {"status": status if status in ("approved", "rejected", "cancelled") else "rejected",
             "coverage": report.model_dump()}
 
 

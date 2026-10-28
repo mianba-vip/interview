@@ -100,7 +100,7 @@ class ForgeState(TypedDict, total=False):
     coverage: dict | None
 
 
-FINAL_STATUSES = {"approved", "rejected", "failed"}
+FINAL_STATUSES = {"approved", "rejected", "cancelled", "failed"}
 
 
 # 与 interview 的 NgramSimilarityGuard 同语义：字符级 trigram Jaccard。
