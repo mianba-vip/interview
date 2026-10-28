@@ -141,6 +141,17 @@ public class ForgeService {
     /** 前端轮询：行状态 + sidecar 实时状态（审核载荷 concepts/report 来自 checkpoint）。 */
     public Map<String, Object> getState(Long userId, Long runId) {
         KgForgeRun run = owned(userId, runId);
+        // 行已是 FAILED 终态:以行为准,不再问 sidecar。关键场景:任务在派发前就死了
+        // (markJobFailure,如 sidecar 不可达),sidecar 对从未见过的 thread 按派发
+        // 窗口语义返回 running——若拿它同步,会把 FAILED 复活成 RUNNING,
+        // 前端永远转"锻造中"而列表显示失败(2026-10-28 实测踩中)。终态必须粘住。
+        if ("FAILED".equals(run.getStatus())) {
+            Map<String, Object> out = new java.util.HashMap<>();
+            out.put("id", run.getId());
+            out.put("status", "FAILED");
+            out.put("error", run.getError() == null ? "锻造任务失败" : run.getError());
+            return out;
+        }
         if (List.of("APPROVED", "REJECTED").contains(run.getStatus())) {
             return Map.of("id", run.getId(), "status", run.getStatus(),
                     "conceptCount", run.getConceptCount());
