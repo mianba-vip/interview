@@ -244,15 +244,23 @@ public class ForgeService {
 
     public Map<String, Object> reject(Long userId, Long runId) {
         KgForgeRun run = owned(userId, runId);
-        if (!List.of("AWAITING_REVIEW", "RUNNING", "PENDING").contains(run.getStatus())) {
+        String prior = run.getStatus();
+        if (!List.of("AWAITING_REVIEW", "RUNNING", "PENDING").contains(prior)) {
             throw new ResponseStatusException(CONFLICT, "当前状态不可拒绝: " + run.getStatus());
         }
         run.setStatus("REJECTED");
         runRepo.save(run);
         try {
-            post("/runs/" + run.getThreadId() + "/finalize", Map.of("decision", "rejected"));
+            if ("AWAITING_REVIEW".equals(prior)) {
+                // 已出提案:走 finalize 正常收尾图状态
+                post("/runs/" + run.getThreadId() + "/finalize", Map.of("decision", "rejected"));
+            } else {
+                // 锻造中/排队中取消:掐断 sidecar 后台任务,止损 LLM 调用
+                // (cancel 幂等,未派发/未在跑时返回 cancelled=false,不报错)
+                post("/runs/" + run.getThreadId() + "/cancel", Map.of());
+            }
         } catch (Exception e) {
-            log.warn("通知 sidecar finalize 失败 runId={}: {}", runId, e.getMessage());
+            log.warn("通知 sidecar 取消/finalize 失败 runId={}: {}", runId, e.getMessage());
         }
         return Map.of("ok", true);
     }

@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -33,6 +34,8 @@ GRAPH = None  # 编译好的图（含 checkpointer），在 lifespan 里初始�
 _BACKGROUND_TASKS: set = set()
 # 本进程正在跑的 thread：防同进程重复触发（DurableJob 重试 / 双击触发）。
 _ACTIVE_THREADS: set = set()
+# run_id -> 真正跑图的 asyncio.Task,供取消锻造时精准掐断(止损 LLM 调用)
+_RUN_TASKS: dict = {}
 
 
 @asynccontextmanager
@@ -129,7 +132,8 @@ async def start_run(req: ForgeRequest, x_forge_secret: str | None = Header(defau
 
     task = asyncio.create_task(_run(req))
     _BACKGROUND_TASKS.add(task)
-    task.add_done_callback(_BACKGROUND_TASKS.discard)
+    _RUN_TASKS[req.run_id] = task
+    task.add_done_callback(lambda t: (_BACKGROUND_TASKS.discard(t), _RUN_TASKS.pop(req.run_id, None)))
     return {"run_id": req.run_id, "accepted": True}
 
 
@@ -142,6 +146,18 @@ async def _run(req: ForgeRequest) -> None:
     }
     try:
         await GRAPH.ainvoke(state_in, config=_config(req.run_id))
+    except asyncio.CancelledError:
+        # 用户取消:写 rejected 终态(与拒绝同语义,Java/前端无需新增枚举),再放行取消
+        log.info("锻造被用户取消 run_id=%s", req.run_id)
+        try:
+            await GRAPH.aupdate_state(
+                _config(req.run_id),
+                {"status": "rejected", "error": None},
+                as_node="assemble",
+            )
+        except Exception:  # noqa: BLE001
+            log.exception("写入取消状态失败 run_id=%s", req.run_id)
+        raise
     except Exception as e:  # noqa: BLE001
         log.exception("锻造失败 run_id=%s", req.run_id)
         try:
@@ -208,3 +224,19 @@ async def finalize(
 
     result = await GRAPH.ainvoke(Command(resume=req.model_dump()), config=_config(run_id))
     return {"status": result.get("status")}
+
+@app.post("/runs/{run_id}/cancel")
+async def cancel_run(run_id: str, x_forge_secret: str | None = Header(default=None)) -> dict:
+    """取消正在锻造的 run:掐断后台任务(止损 LLM 调用),状态写 rejected。
+
+    幂等:不在跑(未派发/已结束/未知)时返回 cancelled=False,不报错——
+    Java 侧在 PENDING/RUNNING 阶段调用本端点,与派发窗口天然兼容。
+    待审核(AWAITING_REVIEW)的取消走 finalize(rejected),不走这里。
+    """
+    _require_secret(x_forge_secret)
+    task = _RUN_TASKS.get(run_id)
+    if task is not None and not task.done():
+        task.cancel()
+        log.info("已请求取消 run_id=%s", run_id)
+        return {"ok": True, "cancelled": True}
+    return {"ok": True, "cancelled": False}
