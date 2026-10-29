@@ -21,10 +21,10 @@ icon: build/icon.png
 afterSign: ./scripts/afterSign.js
 # 自动更新源：electron-updater 启动时从 GitHub Releases 拉 latest*.yml 检查新版本。
 # 发布方式：export GH_TOKEN=xxx && npx electron-builder --win nsis --x64 --publish always
-#（仓库 LuckPony/interview 为公开仓库，安装包无需鉴权即可下载；latest*.yml 由 electron-builder 自动生成上传）
+#（仓库 mianba-vip/interview 为公开仓库，安装包无需鉴权即可下载；latest*.yml 由 electron-builder 自动生成上传）
 publish:
   provider: github
-  owner: LuckPony
+  owner: mianba-vip
   repo: interview
 mac:
   category: public.app-category.education
@@ -35,3 +35,5 @@ win:
   target:
     - nsis
     - zip
+nsis:
+  deleteAppDataOnUninstall: false

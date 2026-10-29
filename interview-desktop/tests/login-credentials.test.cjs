@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
-const { createCredentialStore, trustedCredentialSender } = require('../src/login-credentials');
+const { createCredentialStore, createSessionStore, trustedCredentialSender, resolveUserDataDirectory } = require('../src/login-credentials');
 
 function fixture(t, options = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mianba-login-test-'));
@@ -86,4 +86,96 @@ test('只允许可信主窗口的顶层本地 SPA 访问凭据，拒绝外站与
   frame.url = 'http://localhost:5173/#/login';
   assert.equal(trustedCredentialSender(event, win, appPath, false), true);
   assert.equal(trustedCredentialSender(event, win, appPath, true), false);
+});
+
+test('旧 IP 的记住密码迁移到 HTTPS；清除后不会从旧文件恢复', t => {
+  const { config, directory } = fixture(t);
+  const oldScope = 'cloud:http://103.236.92.40:23333';
+  const filename = 'login-' + crypto.createHash('sha256').update(oldScope).digest('hex') + '.json';
+  const ciphertext = config.safeStorage.encryptString(JSON.stringify({ scope: oldScope, ...account })).toString('base64');
+  fs.writeFileSync(path.join(directory, filename), JSON.stringify({ version: 1, ciphertext }));
+  const store = createCredentialStore({ ...config, scope: 'cloud:https://mianba.vip' });
+  assert.deepEqual(store.read().credentials, account);
+  assert.equal(fs.readdirSync(directory).length, 2);
+  store.clear();
+  assert.equal(store.read().credentials, null);
+  assert.deepEqual(fs.readdirSync(directory), []);
+});
+
+test('升级后登录态可从密文恢复；注销保留 API Key 和记住的密码', t => {
+  const { config, store, directory } = fixture(t);
+  const session = { token: 'fixture-token-for-upgrade', userId: '42' };
+  store.save(account);
+  fs.writeFileSync(path.join(directory, 'llm-key.json'), 'fixture-key');
+  createSessionStore(config).save(session);
+  assert.deepEqual(createSessionStore(config).read().session, session);
+  const raw = fs.readdirSync(directory).filter(name => name.startsWith('session-'))
+    .map(name => fs.readFileSync(path.join(directory, name), 'utf8')).join('');
+  assert(!raw.includes(session.token));
+  assert.equal(createSessionStore({ ...config, scope: 'cloud:https://other.example' }).read().session, null);
+  const unavailable = createSessionStore({ ...config,
+    safeStorage: { ...config.safeStorage, isEncryptionAvailable: () => false } });
+  assert.equal(unavailable.read().available, false);
+  assert.deepEqual(createSessionStore(config).read().session, session);
+  createSessionStore(config).clear();
+  assert.deepEqual(store.read().credentials, account);
+  assert.equal(fs.readFileSync(path.join(directory, 'llm-key.json'), 'utf8'), 'fixture-key');
+});
+
+test('固定用户数据目录并保留完整旧目录，不复制或覆盖系统加密状态', t => {
+  const { directory } = fixture(t);
+  const legacy = path.join(directory, 'mianba');
+  fs.mkdirSync(legacy);
+  fs.writeFileSync(path.join(legacy, 'llm-key.json'), 'fixture');
+  fs.writeFileSync(path.join(legacy, 'Local State'), 'fixture-encryption-state');
+  assert.equal(resolveUserDataDirectory(directory, legacy), legacy);
+  assert.equal(fs.readFileSync(path.join(legacy, 'Local State'), 'utf8'), 'fixture-encryption-state');
+  const canonical = path.join(directory, 'interview-desktop');
+  fs.mkdirSync(canonical);
+  fs.writeFileSync(path.join(canonical, 'llm-key.json'), 'canonical-fixture');
+  assert.equal(resolveUserDataDirectory(directory, legacy), canonical);
+});
+
+test('自动更新提示可跳官网或本次关闭，重复检查不反复弹窗；重启后 API Key 仍存在', async t => {
+  const vm = require('node:vm');
+  const { EventEmitter } = require('node:events');
+  const { config, directory } = fixture(t);
+  function runtime(response) {
+    const handlers = new Map();
+    const dialogs = [];
+    const opened = [];
+    const paths = { appData: directory, userData: path.join(directory, 'interview-desktop') };
+    const updater = new EventEmitter();
+    updater.checkForUpdates = async () => { updater.emit('update-available', { version: '1.2.3' }); };
+    const electron = {
+      app: { isPackaged: true, getPath: key => paths[key], setPath: (key, value) => paths[key] = value,
+        setAppUserModelId() {}, commandLine: { appendSwitch() {} }, requestSingleInstanceLock: () => true,
+        on() {}, whenReady: () => ({ then() {} }), getVersion: () => '1.2.2' },
+      Menu: { buildFromTemplate: value => value, setApplicationMenu() {} },
+      ipcMain: { handle: (name, handler) => handlers.set(name, handler) }, safeStorage: config.safeStorage,
+      dialog: { showMessageBox: async options => { dialogs.push(options); return { response }; } },
+      shell: { openExternal: async value => opened.push(value) },
+    };
+    const context = vm.createContext({
+      require: name => name === 'electron' ? electron : name === 'electron-updater' ? { autoUpdater: updater }
+        : name === './login-credentials' ? require('../src/login-credentials') : require(name),
+      __dirname: path.resolve(__dirname, '../src'), Buffer, URL, console,
+      process: { platform: 'win32', on() {} }, setTimeout() {}, clearTimeout() {},
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8'), context);
+    vm.runInContext('setupAutoUpdate()', context);
+    return { handlers, dialogs, opened };
+  }
+  const dismissed = runtime(1);
+  await dismissed.handlers.get('app:checkForUpdates')({}, { prompt: true });
+  await dismissed.handlers.get('app:checkForUpdates')({}, { prompt: true });
+  assert.equal(dismissed.dialogs.length, 1);
+  assert.deepEqual(Array.from(dismissed.dialogs[0].buttons), ['立即去更新', '这次暂不更新']);
+  assert.equal(dismissed.dialogs[0].cancelId, 1);
+  assert.equal(dismissed.opened.length, 0);
+  dismissed.handlers.get('llm:setKey')({}, 'fixture-api-key');
+  const upgraded = runtime(0);
+  assert.equal(upgraded.handlers.get('llm:getKey')(), 'fixture-api-key');
+  await upgraded.handlers.get('app:checkForUpdates')({}, { prompt: true });
+  assert.deepEqual(upgraded.opened, ['https://mianba.vip/#download']);
 });

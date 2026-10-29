@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveLoginCredentials: value => ipcRenderer.invoke('login:save', value),
   clearLoginCredentials: () => ipcRenderer.invoke('login:clear'),
   updateLoginPassword: (email, password) => ipcRenderer.invoke('login:updatePassword', email, password),
+  getSavedSession: () => ipcRenderer.invoke('session:read'),
+  saveSession: (value) => ipcRenderer.invoke('session:save', value),
+  clearSavedSession: () => ipcRenderer.invoke('session:clear'),
   openKnowledgeOriginal: (url) => ipcRenderer.invoke('app:openKnowledgeOriginal', url),
   pickFile: () => ipcRenderer.invoke('dialog:pickFile'),
   pickFolder: () => ipcRenderer.invoke('dialog:pickFolder'),
@@ -25,7 +28,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 版本号 + 检查更新
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   getPlatform: () => ipcRenderer.invoke('app:getPlatform'),
-  checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+  checkForUpdates: (options) => ipcRenderer.invoke('app:checkForUpdates', options),
   downloadUpdate: () => ipcRenderer.invoke('app:downloadUpdate'),
   installUpdate: () => ipcRenderer.invoke('app:installUpdate'),
   // 订阅更新状态（checking / available / downloading / downloaded / not-available / error）

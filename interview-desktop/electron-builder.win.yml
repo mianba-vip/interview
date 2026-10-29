@@ -16,7 +16,7 @@ extraResources:
 icon: build/icon.ico
 publish:
   provider: github
-  owner: LuckPony
+  owner: mianba-vip
   repo: interview
 win:
   icon: build/icon.ico
@@ -24,6 +24,7 @@ win:
     - nsis
     - zip
 nsis:
+  deleteAppDataOnUninstall: false
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true

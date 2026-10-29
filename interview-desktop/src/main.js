@@ -11,7 +11,13 @@ const net = require('net');
 const fs = require('fs');
 const { URL } = require('url');
 const { autoUpdater } = require('electron-updater');
-const { createCredentialStore, trustedCredentialSender } = require('./login-credentials');
+const { createCredentialStore, createSessionStore, trustedCredentialSender, resolveUserDataDirectory } = require('./login-credentials');
+
+// 与安装目录、版本号无关；继续使用原有完整数据目录，系统加密所需的 Local State 也保留。
+const USER_DATA_DIRECTORY = resolveUserDataDirectory(app.getPath('appData'), app.getPath('userData'));
+fs.mkdirSync(USER_DATA_DIRECTORY, { recursive: true });
+app.setPath('userData', USER_DATA_DIRECTORY);
+app.setPath('sessionData', USER_DATA_DIRECTORY);
 
 // Windows 用固定 AppUserModelId 绑定任务栏分组和安装后的 exe 图标，避免回退为 Electron 默认图标。
 if (process.platform === 'win32') app.setAppUserModelId('com.mianba.desktop');
@@ -57,15 +63,19 @@ const HEALTH_TIMEOUT_MS = 90_000;
 // 桌面端图标（与 electron-builder 打包用的 build/icon.png 同源，运行时窗口/启动封面使用）
 const APP_ICON = path.join(__dirname, 'icon.png');
 // 手动更新跳转地址（与 electron-builder.yml 的 publish.owner/repo 保持一致）
-const UPDATE_RELEASES_URL = 'https://github.com/LuckPony/interview/releases';
+const UPDATE_RELEASES_URL = 'https://github.com/mianba-vip/interview/releases';
+const UPDATE_DOWNLOAD_URL = 'https://mianba.vip/#download';
 // GitHub Release 资产下载根（latest-mac.yml 里的相对文件名拼到它后面，得到 dmg 等文件的绝对地址）
-const GITHUB_DOWNLOAD_BASE = 'https://github.com/LuckPony/interview/releases/download';
+const GITHUB_DOWNLOAD_BASE = 'https://github.com/mianba-vip/interview/releases/download';
 
 let backend = null;
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
 let manualUpdateInFlight = false; // 手动「检查更新」进行中：由设置页内联展示，不再弹窗
+let updateCheckInFlight = null;
+let automaticUpdateChecked = false;
+const promptedUpdateVersions = new Set();
 let lastUpdateInfo = null;         // 完整 UpdateInfo（含 files/version）；下载完成后含 downloadedFile
 let lastDownloadedFile = null;     // macOS：手动下载的 dmg 绝对路径，供「立即更新」打开
 let reminderTimer = null;
@@ -494,14 +504,19 @@ function setupAutoUpdate() {
     lastUpdateInfo = info; // 完整 UpdateInfo（含 files），供下载/安装使用
     broadcastUpdate({ phase: 'available', version: info.version });
     updateLog('INFO', `发现新版本 v${info.version}`);
-    if (manualUpdateInFlight) return; // 手动检查：设置页内联展示，不弹窗
+    if (manualUpdateInFlight || promptedUpdateVersions.has(info.version)) return;
+    promptedUpdateVersions.add(info.version);
     dialog.showMessageBox({
       type: 'info',
       title: '发现新版本',
       message: `发现新版本 v${info.version}`,
-      detail: '去「设置 → 检查更新」下载并更新。',
-      buttons: ['知道了'],
-    });
+      detail: '前往官网下载适合这台电脑的新版本，覆盖安装会保留本机设置和登录信息。',
+      buttons: ['立即去更新', '这次暂不更新'],
+      defaultId: 0,
+      cancelId: 1,
+    }).then(({ response }) => {
+      if (response === 0) return shell.openExternal(UPDATE_DOWNLOAD_URL);
+    }).catch(error => updateLog('ERROR', error));
   });
 
   autoUpdater.on('update-not-available', (info) => {
@@ -533,7 +548,7 @@ function setupAutoUpdate() {
 
   // 启动后检查（只查不下载）；失败写入 updater.log，不再静默吞掉。
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch((error) => updateLog('ERROR', error));
+    void requestUpdateCheck(true);
   }, 8000); // 等窗口起来再查，避免拖慢首屏
 }
 
@@ -728,9 +743,8 @@ function readLlmKey() {
   try {
     const raw = JSON.parse(fs.readFileSync(LLM_KEY_FILE(), 'utf8'));
     if (!raw.key) return '';
-    if (raw.enc && safeStorage.isEncryptionAvailable()) {
-      return safeStorage.decryptString(Buffer.from(raw.key, 'base64'));
-    }
+    if (raw.enc) return safeStorage.isEncryptionAvailable()
+      ? safeStorage.decryptString(Buffer.from(raw.key, 'base64')) : '';
     return raw.key;
   } catch {
     return '';
@@ -739,13 +753,18 @@ function readLlmKey() {
 function writeLlmKey(key) {
   const k = key || '';
   try {
+    fs.mkdirSync(app.getPath('userData'), { recursive: true });
+    const target = LLM_KEY_FILE();
+    let value;
     if (k && safeStorage.isEncryptionAvailable()) {
-      fs.writeFileSync(LLM_KEY_FILE(), JSON.stringify({ enc: true, key: safeStorage.encryptString(k).toString('base64') }));
+      value = { enc: true, key: safeStorage.encryptString(k).toString('base64') };
     } else {
-      fs.writeFileSync(LLM_KEY_FILE(), JSON.stringify({ enc: false, key: k }));
+      value = { enc: false, key: k };
     }
+    fs.writeFileSync(target + '.tmp', JSON.stringify(value), { mode: 0o600 });
+    fs.renameSync(target + '.tmp', target);
   } catch (e) {
-    console.error('保存 LLM key 失败:', e.message);
+    throw new Error('保存本机 API Key 失败，请检查磁盘及目录权限');
   }
   return true;
 }
@@ -753,7 +772,7 @@ ipcMain.handle('llm:getKey', () => readLlmKey());
 ipcMain.handle('llm:setKey', (_e, key) => writeLlmKey(key));
 
 // 与退出登录清理的 token 分离；只允许本地 SPA 的主 frame 访问登录密码。
-function loginCredentialStore(event) {
+function loginCredentialStore(event, session = false) {
   if (!trustedCredentialSender(event, mainWindow, app.getAppPath(), app.isPackaged)) {
     throw new Error('此页面无权访问本机登录信息');
   }
@@ -763,12 +782,16 @@ function loginCredentialStore(event) {
   const endpoint = new URL(server);
   if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password) throw new Error('后端地址无效');
   const scope = `${isCloud(cfg) ? 'cloud' : 'local'}:${endpoint.origin}${endpoint.pathname.replace(/\/+$/, '')}`;
-  return createCredentialStore({ directory: app.getPath('userData'), scope, safeStorage });
+  const createStore = session ? createSessionStore : createCredentialStore;
+  return createStore({ directory: app.getPath('userData'), scope, safeStorage });
 }
 ipcMain.handle('login:read', event => loginCredentialStore(event).read());
 ipcMain.handle('login:save', (event, value) => loginCredentialStore(event).save(value));
 ipcMain.handle('login:clear', event => loginCredentialStore(event).clear());
 ipcMain.handle('login:updatePassword', (event, email, password) => loginCredentialStore(event).updatePassword(email, password));
+ipcMain.handle('session:read', event => loginCredentialStore(event, true).read());
+ipcMain.handle('session:save', (event, value) => loginCredentialStore(event, true).save(value));
+ipcMain.handle('session:clear', event => loginCredentialStore(event, true).clear());
 
 // —— 本地 fs 桥：渲染进程调 window.electronAPI.pickFile / pickFolder ——
 ipcMain.handle('dialog:pickFile', async () => {
@@ -856,19 +879,23 @@ ipcMain.handle('app:isCloud', () => isCloud(loadConfig()));
 ipcMain.handle('app:getVersion', () => app.getVersion());
 ipcMain.handle('app:getPlatform', () => process.platform);
 
-ipcMain.handle('app:checkForUpdates', async () => {
-  if (!app.isPackaged) return { error: '开发模式不支持检查更新，请使用打包后的应用' };
-  manualUpdateInFlight = true;
-  try {
-    await autoUpdater.checkForUpdates();
-  } catch (e) {
-    manualUpdateInFlight = false;
-    return { error: (e && e.message) || '检查更新失败' };
-  }
-  // 结果不从这里返回：检查结果通过 update:status 事件推给设置页，
-  // manualUpdateInFlight 在 update-not-available / error / update-downloaded 里复位。
-  return { ok: true };
-});
+function requestUpdateCheck(prompt = false) {
+  if (!app.isPackaged) return Promise.resolve({ error: '开发模式不支持检查更新，请使用打包后的应用' });
+  if (updateCheckInFlight) return updateCheckInFlight;
+  if (prompt && automaticUpdateChecked) return Promise.resolve({ ok: true });
+  if (prompt) automaticUpdateChecked = true;
+  manualUpdateInFlight = !prompt;
+  updateCheckInFlight = autoUpdater.checkForUpdates()
+    .then(() => ({ ok: true }))
+    .catch(e => {
+      manualUpdateInFlight = false;
+      updateLog('ERROR', e);
+      return { error: (e && e.message) || '检查更新失败' };
+    })
+    .finally(() => { updateCheckInFlight = null; });
+  return updateCheckInFlight;
+}
+ipcMain.handle('app:checkForUpdates', (_event, options) => requestUpdateCheck(options?.prompt === true));
 
 // 只下载、不安装：Windows/Linux 走 electron-updater（正确格式的安装包），macOS 手动下 dmg。
 ipcMain.handle('app:downloadUpdate', async () => {

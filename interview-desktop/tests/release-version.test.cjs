@@ -34,3 +34,34 @@ test('拒绝无效基础版本，避免发布 NaN 或非法版本', () => {
   }
   assert.throws(() => nextReleaseVersion('0.6.9007199254740991', []), /安全整数/);
 });
+
+test('官网下载查询失败时，四个平台仍直接下载对应的最新版文件', async () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const vm = require('node:vm');
+  const win = { innerHTML: '' };
+  const mac = { innerHTML: '' };
+  const empty = { querySelectorAll: () => [] };
+  const document = { readyState: 'complete', body: { dataset: { repo: 'mianba-vip/interview' } },
+    querySelector: selector => selector === '#dl-win' ? win : selector === '#dl-mac' ? mac : empty,
+    querySelectorAll: () => [], addEventListener() {} };
+  // 无关的页面节点保持缺失，真实启动流程仍执行下载数据的失败分支。
+  document.querySelector = selector => selector === '#dl-win' ? win : selector === '#dl-mac' ? mac
+    : selector === '#nav-links' ? empty : null;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../official-site/assets/site.js'), 'utf8'), {
+    document, window: { addEventListener() {}, setTimeout, clearTimeout, scrollY: 0 },
+    localStorage: { getItem: () => null, setItem() {} }, AbortController,
+    fetch: async () => { throw new Error('fixture network unavailable'); },
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  const hrefs = [...(win.innerHTML + mac.innerHTML).matchAll(/href="([^"]+)"/g)].map(match => match[1]);
+  assert.equal(hrefs.length, 4);
+  const config = fs.readFileSync(path.join(__dirname, '../electron-builder.cloud.yml'), 'utf8');
+  const name = config.match(/^artifactName:\s*(.+)$/m)[1];
+  const platforms = [['win', 'x64', 'exe'], ['win', 'x64', 'zip'], ['mac', 'arm64', 'dmg'], ['mac', 'x64', 'dmg']];
+  for (const [os, arch, ext] of platforms) {
+    const file = name.replace('${productName}', 'mianba').replace('${os}', os).replace('${arch}', arch).replace('${ext}', ext);
+    assert(hrefs.includes('https://github.com/mianba-vip/interview/releases/latest/download/' + file));
+  }
+  assert(!name.includes('${version}'));
+});

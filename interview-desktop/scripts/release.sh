@@ -61,4 +61,4 @@ echo "==> macOS ${MAC_ARCH}：构建并上传 dmg/zip"
 )
 
 echo "✅ v${VERSION}（云端模式）已构建并上传 GitHub Release"
-ls -lh interview-desktop/dist-electron-cloud/mianba-"$VERSION"-cloud-* 2>/dev/null || true
+ls -lh interview-desktop/dist-electron-cloud/mianba-cloud-* 2>/dev/null || true

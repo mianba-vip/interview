@@ -1,7 +1,8 @@
 appId: com.mianba.desktop
 # 产物/更新文件名必须 ASCII：GitHub 上传时中文名会导致 URL 未转义报错（Request path contains unescaped characters）
 productName: mianba
-artifactName: ${productName}-${version}-cloud-${os}-${arch}.${ext}
+# 固定文件名支持 releases/latest/download/...，版本仍写入安装包及更新清单。
+artifactName: ${productName}-cloud-${os}-${arch}.${ext}
 directories:
   output: dist-electron-cloud
   buildResources: build
@@ -20,7 +21,7 @@ afterSign: ./scripts/afterSign.js
 # 自动更新源：与本地版共用 GitHub Releases；发布时选择只传云产物，latest*.yml 会只列云产物
 publish:
   provider: github
-  owner: LuckPony
+  owner: mianba-vip
   repo: interview
 mac:
   category: public.app-category.education
@@ -33,6 +34,7 @@ win:
     - nsis
     - zip
 nsis:
+  deleteAppDataOnUninstall: false
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true

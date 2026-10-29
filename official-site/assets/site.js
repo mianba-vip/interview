@@ -3,9 +3,9 @@
 
   const qs = (selector, root = document) => root.querySelector(selector);
   const qsa = (selector, root = document) => [...root.querySelectorAll(selector)];
-  const repo = document.body.dataset.repo || 'LuckPony/interview';
+  const repo = document.body.dataset.repo || 'mianba-vip/interview';
   const repoUrl = `https://github.com/${repo}`;
-  const releaseUrl = `${repoUrl}/releases`;
+  const latestDownload = (file) => `${repoUrl}/releases/latest/download/${encodeURIComponent(file)}`;
 
   const shots = [
     { file: 'dashboard-latest.png', preview: 'dashboard-latest.webp', tab: '首页', title: '学习总览', subtitle: '真实进度与成长趋势' },
@@ -124,7 +124,7 @@
     });
   }
 
-  const cacheKey = 'mianba_release_cache_v2';
+  const cacheKey = 'mianba_release_cache_v3';
   const cacheTtl = 10 * 60 * 1000;
 
   function readReleaseCache() {
@@ -151,11 +151,10 @@
     try {
       const [repoResponse, releaseResponse] = await Promise.all([
         fetch(`https://api.github.com/repos/${repo}`, options).catch(() => null),
-        fetch(`https://api.github.com/repos/${repo}/releases?per_page=1`, options).catch(() => null),
+        fetch(`https://api.github.com/repos/${repo}/releases/latest`, options).catch(() => null),
       ]);
       const repoData = repoResponse?.ok ? await repoResponse.json() : null;
-      const releases = releaseResponse?.ok ? await releaseResponse.json() : [];
-      const latest = Array.isArray(releases) ? releases[0] : null;
+      const latest = releaseResponse?.ok ? await releaseResponse.json() : null;
       const data = {
         stars: repoData?.stargazers_count ?? null,
         license: repoData?.license?.spdx_id || 'MIT',
@@ -176,7 +175,7 @@
   }
 
   function downloadLink(label, detail, url) {
-    return `<a class="download-link" href="${url}" target="_blank" rel="noopener"><span>${label}<small> · ${detail}</small></span>${downloadIcon()}</a>`;
+    return `<a class="download-link" href="${url}" download><span>${label}<small> · ${detail}</small></span>${downloadIcon()}</a>`;
   }
 
   function renderRelease(data) {
@@ -190,18 +189,21 @@
     const winZip = find(/cloud-win-x64\.zip$/i) || find(/win-x64\.zip$/i);
     const macArm = find(/cloud-mac-arm64\.dmg$/i) || find(/mac-arm64\.dmg$/i);
     const macX64 = find(/cloud-mac-x64\.dmg$/i) || find(/mac-x64\.dmg$/i);
+    // 新版采用固定资产名；兼容已发布的旧版文件，但绝不跳到 GitHub 列表。
+    const direct = (file, legacy) => data.assets.some(asset => asset.name === file)
+      ? latestDownload(file) : legacy?.url || latestDownload(file);
     const win = qs('#dl-win');
     const mac = qs('#dl-mac');
     if (win) {
       win.innerHTML = [
-        downloadLink('Windows 安装版', 'exe', winExe?.url || releaseUrl),
-        downloadLink('Windows 便携版', 'zip', winZip?.url || releaseUrl),
+        downloadLink('Windows 安装版', 'exe', direct('mianba-cloud-win-x64.exe', winExe)),
+        downloadLink('Windows 便携版', 'zip', direct('mianba-cloud-win-x64.zip', winZip)),
       ].join('');
     }
     if (mac) {
       mac.innerHTML = [
-        downloadLink('Apple 芯片', 'arm64 · dmg', macArm?.url || releaseUrl),
-        downloadLink('Intel 芯片', 'x64 · dmg', macX64?.url || releaseUrl),
+        downloadLink('Apple 芯片', 'arm64 · dmg', direct('mianba-cloud-mac-arm64.dmg', macArm)),
+        downloadLink('Intel 芯片', 'x64 · dmg', direct('mianba-cloud-mac-x64.dmg', macX64)),
       ].join('');
     }
   }

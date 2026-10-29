@@ -39,7 +39,9 @@ jobs:
           node-version: 20
 
       - name: Test release version and cloud build behavior
-        run: npm --prefix interview-desktop run test:release
+        run: |
+          npm --prefix interview-desktop run test:release
+          npm --prefix interview-desktop run test:credentials
 
       - name: Prepare version once for all platforms
         id: version
@@ -205,6 +207,10 @@ jobs:
               exit 1
             }
           done
+          # 官网固定下载链接依赖这四个资产，缺少任何平台都不能发布为最新版。
+          for asset in mianba-cloud-win-x64.exe mianba-cloud-win-x64.zip mianba-cloud-mac-arm64.dmg mianba-cloud-mac-x64.dmg; do
+            test -s "release-assets/$asset" || { echo "Missing download asset: $asset" >&2; exit 1; }
+          done
           mapfile -d '' ASSETS < <(find release-assets -maxdepth 1 -type f \
             \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.yml' -o -name '*.blockmap' \) \
             -print0)
@@ -214,5 +220,7 @@ jobs:
             exit 1
           fi
           printf 'Uploading %s\n' "${ASSETS[@]}"
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "${{ github.sha }}" --title "面霸 $TAG" --generate-notes
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --draft --target "${{ github.sha }}" --title "面霸 $TAG" --generate-notes
           gh release upload "$TAG" "${ASSETS[@]}" --clobber
+          # 全部上传成功后才切换 Latest，下载入口在上传期间仍指向上个完整版本。
+          gh release edit "$TAG" --draft=false --latest
