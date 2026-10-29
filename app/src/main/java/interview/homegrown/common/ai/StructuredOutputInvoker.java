@@ -2,6 +2,7 @@ package interview.homegrown.common.ai;
 
 
 import interview.homegrown.common.config.AiConfigProperties;
+import interview.homegrown.common.exception.BusinessException;
 import interview.homegrown.common.observability.AiTelemetry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -111,6 +112,9 @@ public class StructuredOutputInvoker {
                 T result = converter.convert(extractJson(response));
                 log.debug("结构化输出解析成功, 类型={}",outputClass.getSimpleName());
                 return result;
+            } catch (ResponseStatusException | BusinessException e) {
+                // 供应商余额/权限/限流等调用失败不属于 JSON 格式错误，原样返回可操作的提示。
+                throw e;
             }catch(Exception e){
                 lastError = e.getMessage();
                 log.warn("结构化输出解析失败 (attempt {} / {}: {})", attempt + 1, maxAttempts, lastError);

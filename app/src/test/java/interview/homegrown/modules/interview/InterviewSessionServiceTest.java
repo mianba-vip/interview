@@ -2,6 +2,7 @@ package interview.homegrown.modules.interview;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.homegrown.infrastructure.redis.RedisService;
+import interview.homegrown.common.ai.LlmUpstreamException;
 import interview.homegrown.modules.drill.repository.ConceptRepository;
 import interview.homegrown.modules.studyplan.repository.StudyPlanRepository;
 import interview.homegrown.modules.corpus.service.CorpusLibraryService;
@@ -243,6 +244,28 @@ class InterviewSessionServiceTest {
                         List.class, InterviewSessionService.QAItem.class));
         assertThat(savedQa.get(savedQa.size() - 1).question()).isEqualTo("主问题 2");
         assertThat(savedQa.get(savedQa.size() - 1).followUp()).isFalse();
+    }
+
+    @Test
+    @DisplayName("模型余额不足时保留待评估状态和作答记录，补充额度后可重新评估")
+    void failedEvaluationKeepsAnswersAndPendingState() {
+        InterviewSessionEntity session = session("session-evaluation-failed");
+        session.setStatus(InterviewStatus.PENDING_EVALUATION);
+        var answer = answer(1L, session.getId(), 0, "问题", "我的回答", false);
+        when(persistenceService.getById(session.getId())).thenReturn(session);
+        when(answerRepository.findBySessionIdOrderById(session.getId())).thenReturn(List.of(answer));
+        var failure = new LlmUpstreamException(402);
+        when(evaluateService.evaluate(anyString(), any(), any(), anyString(), any())).thenThrow(failure);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.completeInterview(session.getId(), 7L))
+                .isSameAs(failure);
+        assertThat(session.getStatus()).isEqualTo(InterviewStatus.PENDING_EVALUATION);
+        assertThat(session.getEvaluationJson()).isNull();
+        assertThat(answer.getScore()).isNull();
+        verify(answerRepository, org.mockito.Mockito.never()).save(any());
+        verify(persistenceService, org.mockito.Mockito.never()).save(any());
+        verify(redisService, org.mockito.Mockito.never()).delete(anyString());
+        verifyNoInteractions(questionRepository);
     }
 
     private InterviewSessionEntity session(String id) {

@@ -11,6 +11,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -61,7 +63,6 @@ class StructuredOutputInvokerTest {
         LlmProviderRegistry registry = mock(LlmProviderRegistry.class);
         when(registry.getChatClientOrDefault(anyString()))
                 .thenThrow(new IllegalStateException("没有可用的 AI Provider，请检查 API Key 配置"));
-
         LlmRawClient raw = mock(LlmRawClient.class);
         when(raw.availableForCurrentRequest()).thenReturn(false);
 
@@ -73,5 +74,37 @@ class StructuredOutputInvokerTest {
                 .isEqualTo(HttpStatus.BAD_REQUEST);
         assertThatThrownBy(() -> invoker.invoke("system", "user", DemoOutput.class))
                 .hasMessageContaining("尚未配置 API Key");
+    }
+
+    private StructuredOutputInvoker retryingInvoker(LlmRawClient raw, AiTelemetry telemetry) {
+        var config = configWithOneAttempt();
+        config.getStructured().setMaxAttempts(2);
+        config.getStructured().setIncludeLastError(true);
+        when(raw.availableForCurrentRequest()).thenReturn(true);
+        return new StructuredOutputInvoker(mock(LlmProviderRegistry.class), config, raw, telemetry);
+    }
+
+    @Test
+    void balanceFailureKeepsActionableErrorAndDoesNotRetryParsing() {
+        var raw = mock(LlmRawClient.class);
+        var telemetry = mock(AiTelemetry.class);
+        var invoker = retryingInvoker(raw, telemetry);
+        var failure = new LlmUpstreamException(402);
+        when(raw.complete(anyString(), anyString())).thenThrow(failure);
+        assertThatThrownBy(() -> invoker.invoke("system", "question", DemoOutput.class))
+                .isSameAs(failure).hasMessageContaining("余额不足");
+        verify(raw, times(1)).complete(anyString(), anyString());
+        verify(telemetry, never()).retry(anyString());
+    }
+
+    @Test
+    void malformedJsonStillGetsOneCorrectionAttempt() {
+        var raw = mock(LlmRawClient.class);
+        var telemetry = mock(AiTelemetry.class);
+        var invoker = retryingInvoker(raw, telemetry);
+        when(raw.complete(anyString(), anyString())).thenReturn("invalid JSON", "{\"reply\":\"ok\"}");
+        assertThat(invoker.invoke("system", "question", DemoOutput.class).getReply()).isEqualTo("ok");
+        verify(raw, times(2)).complete(anyString(), anyString());
+        verify(telemetry).retry("structured_output");
     }
 }

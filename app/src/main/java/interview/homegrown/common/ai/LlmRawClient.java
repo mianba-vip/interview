@@ -194,6 +194,9 @@ public class LlmRawClient {
                 return reasoning;
             }
             return null;
+        } catch (LlmUpstreamException e) {
+            // 余额、Key、模型权限等错误不能伪装成空正文，否则上层会重复调用并误报 JSON 解析失败。
+            throw e;
         } catch (Exception e) {
             log.warn("LLM 原生请求失败: {}", e.getMessage());
             return null;
@@ -252,8 +255,7 @@ public class LlmRawClient {
                 if (response == null) return;
                 if (response.statusCode() / 100 != 2) {
                     response.body().close();
-                    notifyError(onError, new BusinessException(ErrorCode.SERVICE_UNAVAILABLE,
-                            "LLM stream HTTP " + response.statusCode()));
+                    notifyError(onError, new LlmUpstreamException(response.statusCode()));
                     return;
                 }
                 long waitMs = thinking ? THINK_RETRY_MS : NO_THINK_MAX_WAIT_MS;
@@ -410,7 +412,8 @@ public class LlmRawClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() / 100 != 2) {
-                throw new RuntimeException("LLM HTTP " + response.statusCode() + ": " + response.body());
+                // 不把供应商原始响应体直接传给页面或日志，避免泄露请求内容及凭据。
+                throw new LlmUpstreamException(response.statusCode());
             }
             try {
                 call.usage(objectMapper.readTree(response.body()).path("usage"));
@@ -548,9 +551,8 @@ public class LlmRawClient {
     private String postWithRetry(Map<String, Object> body) throws Exception {
         try {
             return postTo(endpoint(), body, 60);
-        } catch (RuntimeException e) {
-            if (e.getMessage() != null && e.getMessage().startsWith("LLM HTTP 400")
-                    && hasOptionalParams(body)) {
+        } catch (LlmUpstreamException e) {
+            if (e.getUpstreamStatus() == 400 && hasOptionalParams(body)) {
                 log.info("complete HTTP 400（可能不认识可选参数），去掉可选参数后重试: {}", e.getMessage());
                 telemetry.retry("unsupported_parameter");
                 return postTo(endpoint(), stripOptionalParams(body), 60);
