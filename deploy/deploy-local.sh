@@ -24,6 +24,14 @@
 set -Eeuo pipefail
 trap 'rc=$?; echo "❌ 部署中断：deploy-local.sh 第 ${LINENO} 行，退出码 ${rc}" >&2' ERR
 
+# Bash 会边执行边读取文件。上传期间更新工作树可能导致后半段读取错位，
+# 因此启动时完整读取、校验，再从内存执行；不生成额外文件。
+if [[ -z "${BASH_EXECUTION_STRING:-}" ]]; then
+  DEPLOY_SCRIPT_CONTENT="$(cat -- "$0")"
+  "$BASH" -n -c "$DEPLOY_SCRIPT_CONTENT" "$0"
+  exec "$BASH" -c "$DEPLOY_SCRIPT_CONTENT" "$0" "$@"
+fi
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
