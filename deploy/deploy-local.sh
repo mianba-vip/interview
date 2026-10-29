@@ -6,7 +6,6 @@
 #       直连部署不可用；本机（国内 IP）SSH 可达，故用本脚本完成部署。
 #
 # 用法（在仓库根目录任意位置执行）：
-#   Windows PowerShell：.\deploy\deploy.bat
 #   bash deploy/deploy-local.sh
 #   bash deploy/deploy-local.sh --check-ssh  # 只检查连接，不构建或部署
 #
@@ -26,8 +25,6 @@ set -Eeuo pipefail
 trap 'rc=$?; echo "❌ 部署中断：deploy-local.sh 第 ${LINENO} 行，退出码 ${rc}" >&2' ERR
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-source "$ROOT/deploy/windows-bash.sh"
-ensure_windows_bash "$0" "$@"
 cd "$ROOT"
 
 CHECK_SSH_ONLY=false
@@ -41,11 +38,20 @@ fi
 SSH_HOST="${SSH_HOST:-103.236.92.40}"
 SSH_PORT="${SSH_PORT:-37777}"
 SSH_USER="${SSH_USER:-root}"
-# Windows 使用 Git Bash，统一转换显式路径及 Windows 用户目录。
+# WSL 的 HOME 属于 Linux 用户，自动查找当前 Windows 用户的私钥。
 WINDOWS_PROFILE=""
+WINDOWS_ROOT=""
 if command -v cygpath >/dev/null 2>&1; then
   WINDOWS_PROFILE="$(cygpath -u "${USERPROFILE:-$HOME}")"
   if [ -n "${SSH_KEY:-}" ]; then SSH_KEY="$(cygpath -u "$SSH_KEY")"; fi
+elif command -v wslpath >/dev/null 2>&1 && command -v cmd.exe >/dev/null 2>&1; then
+  WINDOWS_PROFILE="$(cmd.exe /d /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')"
+  WINDOWS_ROOT="$(cmd.exe /d /c 'echo %WINDIR%' 2>/dev/null | tr -d '\r')"
+  WINDOWS_PROFILE="$(wslpath -u "$WINDOWS_PROFILE")"
+  WINDOWS_ROOT="$(wslpath -u "$WINDOWS_ROOT")"
+  if [[ "${SSH_KEY:-}" =~ ^[A-Za-z]:[\\/] ]]; then
+    SSH_KEY="$(wslpath -u "$SSH_KEY")"
+  fi
 fi
 
 # 优先使用显式配置，其次当前 Bash 用户，最后当前 Windows 用户。
@@ -71,14 +77,25 @@ step() { echo; echo "==> $1"; }
 # "dup() in/out/err failed"。成对选择 ssh/scp，并用 tar 传输目录，
 # 避免 Windows 上的 rsync 运行时兼容问题。
 # ssh/scp 解析：个别 Git Bash 自带的 ssh/scp 是坏的（缺 DLL / 传输层失效），
-# 成对优先用 Windows 自带 OpenSSH；Linux/macOS 使用系统 ssh/scp。
+# 使用 Windows 私钥时优先用 Windows OpenSSH，避免 WSL 的 NTFS 权限检查。
+# Linux/macOS 和 WSL 自身的 Linux 私钥使用系统 ssh/scp。
 resolve_pair() {
   local d="${WINDIR:-/c/Windows}/System32/OpenSSH"
   if command -v cygpath >/dev/null 2>&1; then d="$(cygpath -u "$d")"; fi
   [ -x "$d/ssh.exe" ] && [ -x "$d/scp.exe" ] || d="/c/Windows/System32/OpenSSH"
+  local windows_key="$SSH_KEY"
+  if [ -n "$WINDOWS_ROOT" ]; then
+    windows_key="$(wslpath -w "$SSH_KEY")"
+    if [[ "$windows_key" =~ ^[A-Za-z]:[\\/] ]]; then
+      d="$WINDOWS_ROOT/System32/OpenSSH"
+    else
+      d=""
+    fi
+  fi
   if [ -x "$d/ssh.exe" ] && [ -x "$d/scp.exe" ] && "$d/ssh.exe" -V 2>&1 | grep -qi ssh; then
     SSH_BIN="$d/ssh.exe"; SCP_BIN="$d/scp.exe"
-    SSH_KEY_ARG="$(cygpath -m "$SSH_KEY")"
+    if command -v cygpath >/dev/null 2>&1; then windows_key="$(cygpath -m "$SSH_KEY")"; fi
+    SSH_KEY_ARG="$windows_key"
     return 0
   fi
   SSH_BIN="$(command -v ssh 2>/dev/null || true)"
