@@ -6,13 +6,15 @@
 #       直连部署不可用；本机（国内 IP）SSH 可达，故用本脚本完成部署。
 #
 # 用法（在仓库根目录任意位置执行）：
+#   Windows PowerShell：.\deploy\deploy.bat
 #   bash deploy/deploy-local.sh
+#   bash deploy/deploy-local.sh --check-ssh  # 只检查连接，不构建或部署
 #
 # 可配置环境变量（均有默认值）：
 #   SSH_HOST   服务器 IP                默认 103.236.92.40
 #   SSH_PORT   服务器 SSH 端口（机房 NAT→22） 默认 37777
 #   SSH_USER   SSH 用户名               默认 root
-#   SSH_KEY    SSH 私钥路径             默认 ~/.ssh/id_ed25519
+#   SSH_KEY    SSH 私钥路径             自动查找当前用户的 id_ed25519 / id_rsa
 #   DEPLOY_DIR 服务器部署目录           默认 /opt/mianba
 #   ENABLE_OBSERVABILITY 首次启用监控时设 true；之后由服务器标记自动沿用
 #
@@ -24,18 +26,37 @@ set -Eeuo pipefail
 trap 'rc=$?; echo "❌ 部署中断：deploy-local.sh 第 ${LINENO} 行，退出码 ${rc}" >&2' ERR
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "$ROOT/deploy/windows-bash.sh"
+ensure_windows_bash "$0" "$@"
 cd "$ROOT"
+
+CHECK_SSH_ONLY=false
+if [ "$#" -eq 1 ] && [ "$1" = "--check-ssh" ]; then
+  CHECK_SSH_ONLY=true
+elif [ "$#" -ne 0 ]; then
+  echo "用法：bash deploy/deploy-local.sh [--check-ssh]" >&2
+  exit 2
+fi
 
 SSH_HOST="${SSH_HOST:-103.236.92.40}"
 SSH_PORT="${SSH_PORT:-37777}"
 SSH_USER="${SSH_USER:-root}"
-# SSH 私钥：优先环境变量 SSH_KEY；否则自动探测（兼容 Git Bash / WSL；WSL 里 Windows 路径要走 /mnt/c）
+# Windows 使用 Git Bash，统一转换显式路径及 Windows 用户目录。
+WINDOWS_PROFILE=""
+if command -v cygpath >/dev/null 2>&1; then
+  WINDOWS_PROFILE="$(cygpath -u "${USERPROFILE:-$HOME}")"
+  if [ -n "${SSH_KEY:-}" ]; then SSH_KEY="$(cygpath -u "$SSH_KEY")"; fi
+fi
+
+# 优先使用显式配置，其次当前 Bash 用户，最后当前 Windows 用户。
 if [ -z "${SSH_KEY:-}" ]; then
-  for _k in "$HOME/.ssh/id_ed25519" "$HOME/.ssh/id_rsa" "/mnt/c/Users/31136/.ssh/id_rsa"; do
+  for _k in "$HOME/.ssh/id_ed25519" "$HOME/.ssh/id_rsa" \
+      "${WINDOWS_PROFILE:-$HOME}/.ssh/id_ed25519" "${WINDOWS_PROFILE:-$HOME}/.ssh/id_rsa"; do
     if [ -f "$_k" ]; then SSH_KEY="$_k"; break; fi
   done
 fi
-SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_rsa}"
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
+SSH_KEY_ARG="$SSH_KEY"
 DEPLOY_DIR="${DEPLOY_DIR:-/opt/mianba}"
 ENABLE_OBSERVABILITY="${ENABLE_OBSERVABILITY:-auto}"
 [[ "$ENABLE_OBSERVABILITY" =~ ^(auto|true|false)$ ]] || {
@@ -47,15 +68,18 @@ JAR="app/build/libs/app-0.0.1-SNAPSHOT.jar"
 step() { echo; echo "==> $1"; }
 
 # Git Bash 下混用其它发行版的 rsync.exe 与 ssh.exe 会触发
-# "dup() in/out/err failed"。统一使用 Git 自带的 ssh/scp，并用 tar
-# 传输目录，避免 Windows 上的 rsync 运行时兼容问题。
+# "dup() in/out/err failed"。成对选择 ssh/scp，并用 tar 传输目录，
+# 避免 Windows 上的 rsync 运行时兼容问题。
 # ssh/scp 解析：个别 Git Bash 自带的 ssh/scp 是坏的（缺 DLL / 传输层失效），
-# 成对优先用 Windows 自带 OpenSSH；WSL/Linux 下该路径不存在，走系统自带 ssh/scp。
+# 成对优先用 Windows 自带 OpenSSH；Linux/macOS 使用系统 ssh/scp。
 resolve_pair() {
   local d="${WINDIR:-/c/Windows}/System32/OpenSSH"
+  if command -v cygpath >/dev/null 2>&1; then d="$(cygpath -u "$d")"; fi
   [ -x "$d/ssh.exe" ] && [ -x "$d/scp.exe" ] || d="/c/Windows/System32/OpenSSH"
   if [ -x "$d/ssh.exe" ] && [ -x "$d/scp.exe" ] && "$d/ssh.exe" -V 2>&1 | grep -qi ssh; then
-    SSH_BIN="$d/ssh.exe"; SCP_BIN="$d/scp.exe"; return 0
+    SSH_BIN="$d/ssh.exe"; SCP_BIN="$d/scp.exe"
+    SSH_KEY_ARG="$(cygpath -m "$SSH_KEY")"
+    return 0
   fi
   SSH_BIN="$(command -v ssh 2>/dev/null || true)"
   SCP_BIN="$(command -v scp 2>/dev/null || true)"
@@ -66,9 +90,9 @@ resolve_pair() {
 }
 resolve_pair
 
-SSH=("$SSH_BIN" -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=no
+SSH=("$SSH_BIN" -i "$SSH_KEY_ARG" -o BatchMode=yes -o StrictHostKeyChecking=no
   -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -p "$SSH_PORT")
-SCP=("$SCP_BIN" -i "$SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=no
+SCP=("$SCP_BIN" -i "$SSH_KEY_ARG" -o BatchMode=yes -o StrictHostKeyChecking=no
   -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -P "$SSH_PORT")
 REMOTE="$SSH_USER@$SSH_HOST"
 
@@ -95,7 +119,11 @@ remote_sha() {
 }
 
 # ---------- 0/5 预检 ----------
-[ -f "$SSH_KEY" ] || { echo "❌ SSH 私钥不存在：$SSH_KEY"; exit 1; }
+[ -f "$SSH_KEY" ] || {
+  echo "❌ SSH 私钥不存在：$SSH_KEY" >&2
+  echo "   请通过 SSH_KEY 指定私钥；Windows 可使用 C:/Users/<用户>/.ssh/id_ed25519。" >&2
+  exit 1
+}
 [[ "$DEPLOY_DIR" =~ ^/[A-Za-z0-9._/-]+$ && "$DEPLOY_DIR" != "/" \
    && ! "$DEPLOY_DIR" =~ (^|/)\.\.(/|$) ]] || {
   echo "❌ DEPLOY_DIR 必须是安全的绝对路径且不能为根目录：$DEPLOY_DIR"
@@ -104,11 +132,16 @@ remote_sha() {
 command -v tar >/dev/null || { echo "❌ 缺少 tar"; exit 1; }
 
 step "0/5 预检服务器 SSH 连通性（${SSH_USER}@${SSH_HOST}:${SSH_PORT}）"
+echo "   私钥：$SSH_KEY"
 if ! retry "SSH 预检" "${SSH[@]}" "$REMOTE" 'command -v tar >/dev/null'; then
   echo "❌ 无法 SSH 到服务器（检查网络/密钥/端口）"
   exit 1
 fi
 echo "   ✓ SSH 连通"
+if [ "$CHECK_SSH_ONLY" = true ]; then
+  echo "✅ SSH 预检通过，未执行构建或部署。"
+  exit 0
+fi
 
 # ---------- 1/5 构建后端 ----------
 step "1/5 构建后端 jar（gradle）"
@@ -182,7 +215,7 @@ fi
 
 # ---------- 4/5 服务器执行部署 ----------
 step "4/5 服务器执行部署（PG 备份 → docker 构建/重启 → 健康检查，约 1~3 分钟）"
-"$SSH_BIN" -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
+"$SSH_BIN" -i "$SSH_KEY_ARG" -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
     -o ServerAliveInterval=30 -p "$SSH_PORT" "$REMOTE" \
   "export DEPLOY_DIR='$DEPLOY_DIR' COMPOSE_FILE='$DEPLOY_DIR/docker-compose.yml:$DEPLOY_DIR/docker-compose.kgforge.yml' ENABLE_OBSERVABILITY='$ENABLE_OBSERVABILITY'; \
    chmod +x '$DEPLOY_DIR/deploy-prod.sh'; bash '$DEPLOY_DIR/deploy-prod.sh'"

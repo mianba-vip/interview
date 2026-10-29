@@ -317,6 +317,16 @@ bash deploy/deploy-local.sh
 # 可用环境变量：SSH_HOST / SSH_PORT(默认37777) / SSH_USER / SSH_KEY / DEPLOY_DIR
 ```
 
+Windows PowerShell 请使用以下入口，它直接调用 Git Bash，不启动 WSL：
+
+```powershell
+.\deploy\deploy.bat
+# 只检查私钥和服务器连接，不构建或发布：
+.\deploy\deploy.bat --check-ssh
+```
+
+需要安装 Git for Windows；自定义安装目录可用 `GIT_BASH` 指定 `bin/bash.exe`。脚本自动查找当前用户的 `id_ed25519` / `id_rsa`，也可用 `SSH_KEY` 显式指定。PowerShell 中的裸 `bash` 由系统 PATH 决定，可能先启动 WSL；此时 `.sh` 会立即转交给 Git Bash，使用 `.bat` 可完全绕开 WSL。
+
 > 服务器部署统一走本地脚本（机房限制境外入站，GitHub Actions 无法直连，相关部署流水线已移除）。
 
 ```text
