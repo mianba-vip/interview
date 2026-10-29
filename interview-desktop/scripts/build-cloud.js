@@ -5,6 +5,7 @@
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { resolveCloudServer } = require('./resolve-cloud-server');
 
 const DESKTOP = path.resolve(__dirname, '..');
 const rawServer = (process.env.MIANBA_SERVER || '').trim();
@@ -18,23 +19,15 @@ if (!rawServer) {
   process.exit(1);
 }
 
-// Windows 用户常直接填写 IP:端口。没有协议时 URL 会在 Electron 的 file:// 页面中
-// 被当成相对路径，所有 API 请求都会变成网络错误。统一补 http://，并在构建前校验，
-// 避免生成一个能打开界面、却永远无法登录的安装包。
-const serverWithProtocol = /^https?:\/\//i.test(rawServer)
-  ? rawServer
-  : `http://${rawServer}`;
 let server;
 try {
-  const parsed = new URL(serverWithProtocol);
-  if (!parsed.hostname || !['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error('只支持 http 或 https 地址');
-  }
-  server = parsed.toString().replace(/\/$/, '');
+  server = resolveCloudServer(rawServer);
 } catch (error) {
-  console.error(`MIANBA_SERVER 不是有效的服务器地址：${rawServer}`);
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
+}
+if (/103\.236\.92\.40/.test(rawServer)) {
+  console.warn('旧后端端口已关闭公网访问，云桌面改用 https://mianba.vip');
 }
 
 const frontend = require('./resolve-web-dir').resolveWebDir(DESKTOP);

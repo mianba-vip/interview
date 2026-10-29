@@ -9,7 +9,7 @@
 #   Node/npm
 #
 # 用法：
-#   MIANBA_SERVER=http://103.236.92.40:23333 GH_TOKEN=xxx npm run release
+#   MIANBA_SERVER=https://mianba.vip GH_TOKEN=xxx npm run release
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -22,10 +22,7 @@ command -v node >/dev/null || { echo "❌ 缺少 Node.js"; exit 1; }
 command -v npm >/dev/null || { echo "❌ 缺少 npm"; exit 1; }
 
 # 缺协议时自动补 http://（VITE_API_BASE 必须是带协议的绝对地址，fetch 才能拼出合法 URL）
-case "$MIANBA_SERVER" in
-  http://*|https://*) ;;
-  *) MIANBA_SERVER="http://${MIANBA_SERVER}" ;;
-esac
+MIANBA_SERVER="$(node interview-desktop/scripts/resolve-cloud-server.js)"
 export MIANBA_SERVER
 
 VERSION="$(node -p "require('./interview-desktop/package.json').version")"

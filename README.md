@@ -281,11 +281,14 @@ npm start
 
 ```bash
 cd interview-desktop
-MIANBA_SERVER=http://103.236.92.40:23333 GH_TOKEN=xxx npm run release
+MIANBA_SERVER=https://mianba.vip GH_TOKEN=xxx npm run release
 # 一次构建并上传 Windows x64（exe/zip）与当前 Mac 架构（dmg/zip）的云模式安装包
 ```
 
 正式发布一律走**云端模式**（桌面端只含前端，后端在服务器）；`MIANBA_SERVER` 可不带协议（自动补 `http://`）。
+
+当前面霸云端入口为 `https://mianba.vip`。后端 `103.236.92.40:23333` 只允许服务器本机访问，不能再用作桌面安装包的公网地址。
+云构建会将该历史 IP 配置自动迁移到 HTTPS 域名入口，CI 在打包前校验 `/api/auth/config`，避免生成无法登录的安装包。
 
 **本地构建 / 调试**：
 

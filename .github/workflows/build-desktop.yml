@@ -113,13 +113,18 @@ jobs:
             frontend/package-lock.json
             interview-desktop/package-lock.json
 
-      - name: Check MIANBA_SERVER secret
+      - name: Resolve and verify cloud backend
         shell: bash
         run: |
           if [ -z "$MIANBA_SERVER" ]; then
             echo "::error::缺少 MIANBA_SERVER 仓库 Secret（后端服务器地址，云打包用它把前端 API 地址烘焙进安装包）。请在仓库 Settings → Secrets 里配置后重试。"
             exit 1
           fi
+          SERVER="$(node interview-desktop/scripts/resolve-cloud-server.js)"
+          printf 'MIANBA_SERVER=%s\n' "$SERVER" >> "$GITHUB_ENV"
+          # 版本包必须能通过公开入口访问认证服务；禁止把仅回环开放的旧端口烘进安装包。
+          curl -fsS --connect-timeout 10 --max-time 20 --retry 2 "$SERVER/api/auth/config" \
+            | node -e "let body=''; process.stdin.on('data', x => body += x); process.stdin.on('end', () => { const c=JSON.parse(body); if (typeof c.captchaRequired !== 'boolean' || typeof c.emailVerifyRequired !== 'boolean') process.exit(1); });"
 
       - name: Install deps and build SPA (cloud)
         shell: bash

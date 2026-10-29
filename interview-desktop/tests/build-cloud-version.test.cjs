@@ -12,7 +12,7 @@ function createFixture(t) {
   const frontend = path.join(root, 'frontend');
   fs.mkdirSync(path.join(desktop, 'scripts'), { recursive: true });
   fs.mkdirSync(frontend);
-  for (const script of ['build-cloud.js', 'resolve-web-dir.js']) {
+  for (const script of ['build-cloud.js', 'resolve-web-dir.js', 'resolve-cloud-server.js']) {
     fs.copyFileSync(path.join(__dirname, '..', 'scripts', script), path.join(desktop, 'scripts', script));
   }
   const manifest = JSON.stringify({ name: 'desktop-fixture', version: '0.6.7' });
@@ -23,7 +23,7 @@ function createFixture(t) {
     name: 'frontend-fixture', scripts: { build: 'node build.cjs' },
   }));
   fs.writeFileSync(path.join(frontend, 'build.cjs'),
-    "require('fs').mkdirSync('dist', { recursive: true }); require('fs').writeFileSync('dist/index.html', 'fixture SPA');");
+    "require('fs').mkdirSync('dist', { recursive: true }); require('fs').writeFileSync('dist/index.html', 'fixture SPA'); require('fs').writeFileSync('dist/api-base.txt', process.env.VITE_API_BASE);");
   const env = { ...process.env, MIANBA_WEB_DIR: frontend };
   delete env.VERSION_NO_BUMP;
   delete env.MIANBA_SERVER;
@@ -56,4 +56,16 @@ test('缺少服务器地址的失败构建也不会消耗版本号', (t) => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /缺少 MIANBA_SERVER/);
   assertVersionUnchanged(fixture);
+});
+
+test('历史服务器配置也能生成使用当前 HTTPS 入口的安装资源', (t) => {
+  const fixture = createFixture(t);
+  const result = spawnSync(process.execPath, [path.join(fixture.desktop, 'scripts', 'build-cloud.js')], {
+    env: { ...fixture.env, MIANBA_SERVER: 'http://103.236.92.40:23333' }, encoding: 'utf8', timeout: 30000,
+  });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assertVersionUnchanged(fixture);
+  const config = JSON.parse(fs.readFileSync(path.join(fixture.desktop, 'app-dist', 'desktop-config.json')));
+  assert.equal(config.serverUrl, 'https://mianba.vip');
+  assert.equal(fs.readFileSync(path.join(fixture.desktop, 'app-dist', 'api-base.txt'), 'utf8'), config.serverUrl);
 });
