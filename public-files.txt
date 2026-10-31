@@ -65,6 +65,10 @@ app/src/main/resources/application.yml
 app/src/test/java/interview/homegrown/ShowcaseBoundaryTest.java
 build.gradle
 docs/architecture.md
+docs/assets/logo.png
+docs/assets/screenshots/dashboard-latest.png
+docs/assets/screenshots/interview-latest.png
+docs/assets/screenshots/knowledge-library-latest.png
 docs/interfaces.md
 docs/public-scope.md
 gradle/libs.versions.toml
