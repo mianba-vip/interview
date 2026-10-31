@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: mianba-showcase
+  main:
+    banner-mode: "off"
+  threads:
+    virtual:
+      enabled: true
+server:
+  address: 127.0.0.1
+  port: ${SERVER_PORT:8080}

@@ -1,0 +1,25 @@
+name: Public showcase checks
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Check curated public boundary
+        run: python tools/check_public_boundary.py
+      - name: Verify unavailable core and build showcase
+        run: ./gradlew :app:test :app:bootJar --no-daemon
